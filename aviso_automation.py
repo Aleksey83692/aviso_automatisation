@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Aviso YouTube Tasks Automation Script - ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ
-ИСПРАВЛЕНИЯ:
-- Убраны ВСЕ мосты Tor - только прямое соединение
-- Упрощена конфигурация Tor
-- Добавлен fallback без Tor если не работает
-- ТОЧЕЧНЫЕ ИСПРАВЛЕНИЯ:
-- Увеличен таймаут Tor до 20 минут
-- Убраны проверки URL вкладок
-- Исправлены координаты мыши
-- ВОССТАНОВЛЕНА оригинальная логика авторизации
+Aviso YouTube Tasks Automation Script - РАСШИРЕННАЯ ВЕРСИЯ
+НОВЫЕ ФУНКЦИИ:
+- Выполнение заданий на серфинг сайтов
+- Выполнение заданий на чтение писем с GPT-4
+- Координация между тремя типами заданий
+- Обязательное использование Tor (без fallback)
+- Улучшенная имитация человеческого поведения
 """
 
 import os
@@ -42,7 +39,8 @@ def install_requirements():
         'requests',
         'beautifulsoup4',
         'fake-useragent',
-        'webdriver-manager'
+        'webdriver-manager',
+        'g4f'  # Добавляем g4f для GPT-4
     ]
     
     logging.info("📦 Проверка и установка зависимостей...")
@@ -96,10 +94,11 @@ try:
     import requests
     from bs4 import BeautifulSoup
     from fake_useragent import UserAgent
+    import g4f
 except ImportError as e:
     logging.error(f"❌ Критическая ошибка импорта: {e}")
-    logging.error("📋 Попробуйте установить зависимости вручную:")
-    logging.error("pip install selenium requests beautifulsoup4 fake-useragent webdriver-manager")
+    logging.error("📋 Попробуйте установить зависимости вручую:")
+    logging.error("pip install selenium requests beautifulsoup4 fake-useragent webdriver-manager g4f")
     sys.exit(1)
 
 def kill_existing_tor_processes():
@@ -658,6 +657,98 @@ class HumanBehaviorSimulator:
         
         # Финальная пауза после ввода
         HumanBehaviorSimulator.random_sleep(0.5, 1.5)
+    
+    @staticmethod
+    def calculate_reading_time(text: str) -> float:
+        """Расчет времени чтения текста (средняя скорость 200-250 слов в минуту)"""
+        # Подсчет слов
+        words = len(text.split())
+        
+        # Подсчет символов
+        chars = len(text)
+        
+        # Средняя скорость чтения: 220 слов в минуту или 3.7 слов в секунду
+        words_per_second = 3.7
+        
+        # Время чтения по словам
+        reading_time_by_words = words / words_per_second
+        
+        # Дополнительное время для сложных символов (цифры, знаки препинания)
+        complex_chars = sum(1 for c in text if not c.isalpha() and not c.isspace())
+        additional_time = complex_chars * 0.1  # 0.1 секунды на сложный символ
+        
+        # Минимальное время чтения
+        min_time = max(5, words * 0.2)  # Минимум 0.2 секунды на слово
+        
+        total_time = max(min_time, reading_time_by_words + additional_time)
+        
+        # Добавляем случайность ±30%
+        variation = random.uniform(0.7, 1.3)
+        final_time = total_time * variation
+        
+        logging.info(f"📚 Время чтения {words} слов (~{chars} символов): {final_time:.1f} секунд")
+        return final_time
+
+class GPTManager:
+    """Класс для работы с GPT-4 через g4f"""
+    
+    def __init__(self):
+        self.client = g4f
+        
+    def ask_gpt(self, letter_text: str, question: str, answers: List[str]) -> str:
+        """Отправка вопроса GPT-4 для анализа письма"""
+        try:
+            prompt = f"""
+Внимательно прочитай письмо и ответь на вопрос, выбрав ТОЛЬКО НОМЕР правильного ответа.
+
+ПИСЬМО:
+{letter_text}
+
+ВОПРОС:
+{question}
+
+ВАРИАНТЫ ОТВЕТОВ:
+"""
+            for i, answer in enumerate(answers, 1):
+                prompt += f"{i}. {answer}\n"
+            
+            prompt += """
+ВАЖНО: Отвечай ТОЛЬКО цифрой (1, 2, 3 и т.д.) без дополнительных слов и объяснений.
+Пример ответа: 3
+"""
+            
+            logging.info("🤖 Отправляю вопрос GPT-4...")
+            
+            response = self.client.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                stream=False
+            )
+            
+            answer = response.choices[0].message.content.strip()
+            
+            # Извлекаем только цифру из ответа
+            import re
+            number_match = re.search(r'(\d+)', answer)
+            if number_match:
+                answer_number = int(number_match.group(1))
+                if 1 <= answer_number <= len(answers):
+                    logging.info(f"🤖 GPT-4 выбрал ответ {answer_number}: {answers[answer_number-1][:50]}...")
+                    return str(answer_number)
+            
+            # Если не удалось извлечь номер, выбираем случайный
+            fallback_answer = random.randint(1, len(answers))
+            logging.warning(f"⚠ Некорректный ответ GPT, выбираю случайный: {fallback_answer}")
+            return str(fallback_answer)
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка GPT-4: {e}")
+            # В случае ошибки выбираем случайный ответ
+            fallback_answer = random.randint(1, len(answers))
+            logging.warning(f"⚠ Ошибка GPT, выбираю случайный ответ: {fallback_answer}")
+            return str(fallback_answer)
 
 class SimpleTorManager:
     """УПРОЩЕННЫЙ класс для управления Tor соединением ТОЛЬКО с прямым подключением"""
@@ -1085,6 +1176,32 @@ Log notice stdout
         except Exception as e:
             logging.debug(f"⚠ Ошибка остановки Tor: {e}")
 
+class TaskCoordinator:
+    """Класс для координации выполнения разных типов заданий"""
+    
+    def __init__(self):
+        self.task_types = ['youtube', 'surf', 'letters']
+        self.current_cycle_tasks = []
+        self.reset_cycle()
+    
+    def reset_cycle(self):
+        """Сброс цикла заданий"""
+        self.current_cycle_tasks = self.task_types.copy()
+        random.shuffle(self.current_cycle_tasks)
+        logging.info(f"🔄 Новый цикл заданий: {' → '.join(self.current_cycle_tasks)}")
+    
+    def get_next_task_type(self) -> Optional[str]:
+        """Получение следующего типа заданий"""
+        if self.current_cycle_tasks:
+            task_type = self.current_cycle_tasks.pop(0)
+            logging.info(f"🎯 Текущий тип заданий: {task_type}")
+            return task_type
+        return None
+    
+    def is_cycle_complete(self) -> bool:
+        """Проверка завершения цикла"""
+        return len(self.current_cycle_tasks) == 0
+
 class AvisoAutomation:
     """Основной класс автоматизации Aviso"""
     
@@ -1094,16 +1211,17 @@ class AvisoAutomation:
         self.tor_manager = SimpleTorManager()
         self.ua_manager = UserAgentManager()
         self.gecko_manager = GeckoDriverManager()
+        self.gpt_manager = GPTManager()
+        self.task_coordinator = TaskCoordinator()
         self.cookies_file = "aviso_cookies.pkl"
         self.original_ip = None
-        self.use_tor = True
         
         # Данные для авторизации
         self.username = "Aleksey83692"
         self.password = "123456"
         self.base_url = "https://aviso.bz"
         
-        logging.info("🚀 Запуск Aviso Bot")
+        logging.info("🚀 Запуск расширенного Aviso Bot")
         
     def setup_logging(self):
         """Настройка логирования"""
@@ -1152,7 +1270,6 @@ class AvisoAutomation:
             
             ip_element = self.driver.find_element(By.CSS_SELECTOR, "div.ip span")
             current_ip = ip_element.text.strip()
-            
             logging.info(f"🔍 IP: {current_ip}")
             
             if self.original_ip and current_ip == self.original_ip:
@@ -1200,19 +1317,109 @@ class AvisoAutomation:
             return 'firefox'
         
         return None
+    def execute_tasks_by_type(self, task_type: str) -> int:
+        """Выполнение заданий определенного типа"""
+        logging.info(f"🎯 Выполнение заданий типа: {task_type}")
+        
+        completed_tasks = 0
+        
+        try:
+            if task_type == 'youtube':
+                tasks = self.get_youtube_tasks()
+                if tasks:
+                    random.shuffle(tasks)
+                    for i, task in enumerate(tasks):
+                        logging.info(f"📝 YouTube {i+1}/{len(tasks)}")
+                        if self.execute_youtube_task(task):
+                            completed_tasks += 1
+                        self.inter_task_pause()
+                        
+            elif task_type == 'surf':
+                tasks = self.get_surf_tasks()
+                if tasks:
+                    random.shuffle(tasks)
+                    for i, task in enumerate(tasks):
+                        logging.info(f"📝 Серфинг {i+1}/{len(tasks)}")
+                        if self.execute_surf_task(task):
+                            completed_tasks += 1
+                        self.inter_task_pause()
+                        
+            elif task_type == 'letters':
+                tasks = self.get_letter_tasks()
+                if tasks:
+                    random.shuffle(tasks)
+                    for i, task in enumerate(tasks):
+                        logging.info(f"📝 Письмо {i+1}/{len(tasks)}")
+                        if self.execute_letter_task(task):
+                            completed_tasks += 1
+                        self.inter_task_pause()
+            
+            logging.info(f"🏁 {task_type}: завершено {completed_tasks} заданий")
+            return completed_tasks
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка выполнения заданий {task_type}: {e}")
+            return completed_tasks
+    
+    def inter_task_pause(self):
+        """Пауза между заданиями с имитацией активности"""
+        pause_time = random.uniform(1, 20)
+        logging.info(f"⏳ Пауза между заданиями {pause_time:.1f}с")
+        
+        # Разбиваем паузу на интервалы с активностью
+        intervals = max(1, int(pause_time // 10))
+        interval_duration = pause_time / intervals
+        
+        for _ in range(intervals):
+            if random.random() < 0.5:
+                self.random_mouse_movement()
+            if random.random() < 0.3:
+                self.random_scroll()
+            time.sleep(interval_duration)
+    
+    def execute_all_task_types(self) -> Dict[str, int]:
+        """Выполнение всех типов заданий в случайном порядке"""
+        logging.info("🔄 Начало нового цикла заданий")
+        
+        results = {}
+        self.task_coordinator.reset_cycle()
+        
+        while not self.task_coordinator.is_cycle_complete():
+            task_type = self.task_coordinator.get_next_task_type()
+            if task_type:
+                completed = self.execute_tasks_by_type(task_type)
+                results[task_type] = completed
+                
+                # Пауза между типами заданий
+                if not self.task_coordinator.is_cycle_complete():
+                    type_pause = random.uniform(30, 120)
+                    logging.info(f"😴 Пауза между типами заданий: {type_pause:.1f}с")
+                    time.sleep(type_pause)
+        
+        total_completed = sum(results.values())
+        logging.info(f"🏆 Цикл завершен! Всего выполнено: {total_completed} заданий")
+        logging.info(f"📊 Детализация: {results}")
+        
+        return results
 
     def setup_driver(self) -> bool:
-        """Настройка Firefox"""
-        logging.info("🌐 Настройка браузера...")
+        """Настройка Firefox с ОБЯЗАТЕЛЬНЫМ Tor"""
+        logging.info("🌐 Настройка браузера с обязательным Tor...")
         
         self.original_ip = self.get_current_ip_without_proxy()
         
-        if self.tor_manager.start_tor():
-            logging.info("✅ Tor запущен")
-            self.use_tor = True
-        else:
-            logging.warning("⚠ Tor не запущен, работаем без прокси")
-            self.use_tor = False
+        # Попытки запуска Tor
+        for attempt in range(3):
+            logging.info(f"🔄 Попытка запуска Tor {attempt + 1}/3")
+            if self.tor_manager.start_tor():
+                logging.info("✅ Tor запущен успешно")
+                break
+            else:
+                logging.error(f"❌ Попытка {attempt + 1} не удалась")
+                if attempt == 2:
+                    logging.error("💥 Не удалось запустить Tor после 3 попыток. ЗАВЕРШЕНИЕ РАБОТЫ.")
+                    sys.exit(1)
+                time.sleep(10)
         
         try:
             user_agent = self.ua_manager.get_user_agent(self.username)
@@ -1220,18 +1427,16 @@ class AvisoAutomation:
             
             firefox_options = Options()
             
-            if self.use_tor:
-                firefox_options.set_preference("network.proxy.type", 1)
-                firefox_options.set_preference("network.proxy.socks", "127.0.0.1")
-                firefox_options.set_preference("network.proxy.socks_port", self.tor_manager.tor_port)
-                firefox_options.set_preference("network.proxy.socks_version", 5)
-                firefox_options.set_preference("network.proxy.socks_remote_dns", True)
-                firefox_options.set_preference("network.proxy.http", "")
-                firefox_options.set_preference("network.proxy.http_port", 0)
-                firefox_options.set_preference("network.proxy.ssl", "")
-                firefox_options.set_preference("network.proxy.ssl_port", 0)
-            else:
-                firefox_options.set_preference("network.proxy.type", 0)
+            # ОБЯЗАТЕЛЬНАЯ настройка Tor прокси
+            firefox_options.set_preference("network.proxy.type", 1)
+            firefox_options.set_preference("network.proxy.socks", "127.0.0.1")
+            firefox_options.set_preference("network.proxy.socks_port", self.tor_manager.tor_port)
+            firefox_options.set_preference("network.proxy.socks_version", 5)
+            firefox_options.set_preference("network.proxy.socks_remote_dns", True)
+            firefox_options.set_preference("network.proxy.http", "")
+            firefox_options.set_preference("network.proxy.http_port", 0)
+            firefox_options.set_preference("network.proxy.ssl", "")
+            firefox_options.set_preference("network.proxy.ssl_port", 0)
             
             firefox_options.set_preference("general.useragent.override", user_agent)
             firefox_options.set_preference("dom.webdriver.enabled", False)
@@ -1279,10 +1484,12 @@ class AvisoAutomation:
                 width, height = random.choice(ipad_sizes)
             
             self.driver.set_window_size(width, height)
-            logging.info("✅ Браузер запущен")
+            logging.info("✅ Браузер запущен с Tor")
             
-            if self.use_tor:
-                return self.verify_ip_change_via_2ip()
+            # ОБЯЗАТЕЛЬНАЯ проверка смены IP
+            if not self.verify_ip_change_via_2ip():
+                logging.error("❌ IP не сменился! Tor не работает правильно. ЗАВЕРШЕНИЕ.")
+                sys.exit(1)
             
             return True
             
@@ -1431,16 +1638,17 @@ class AvisoAutomation:
             time.sleep(random.uniform(0.5, 2.0))
         except:
             pass
-    
+
+    # ========== YOUTUBE TASKS (СУЩЕСТВУЮЩИЙ КОД) ==========
     def get_youtube_tasks(self) -> List[Dict]:
-        """ЭФФЕКТИВНЫЙ поиск заданий - JavaScript вместо цикла по элементам"""
-        logging.info("📋 Поиск заданий...")
+        """ИСПРАВЛЕННЫЙ поиск заданий без StaleElementReference"""
+        logging.info("📋 Поиск YouTube заданий...")
         
         try:
             self.driver.get(f"{self.base_url}/tasks-youtube")
             time.sleep(5)
             
-            # ЭФФЕКТИВНО: JavaScript парсинг ВСЕХ заданий за 1 запрос
+            # Получаем данные заданий через JavaScript БЕЗ сохранения элементов
             tasks_data = self.driver.execute_script("""
                 var tasks = [];
                 var rows = document.querySelectorAll("tr[class^='ads_']");
@@ -1449,7 +1657,7 @@ class AvisoAutomation:
                     try {
                         var row = rows[i];
                         var className = row.className;
-                        var taskIdMatch = className.match(/ads_(\d+)/);
+                        var taskIdMatch = className.match(/ads_(\\d+)/);
                         
                         if (taskIdMatch) {
                             var taskId = taskIdMatch[1];
@@ -1457,7 +1665,7 @@ class AvisoAutomation:
                             
                             if (startButton) {
                                 var onclick = startButton.getAttribute('onclick');
-                                var timeMatch = onclick ? onclick.match(/start_youtube_new\(\d+,\s*'(\d+)'\)/) : null;
+                                var timeMatch = onclick ? onclick.match(/start_youtube_new\\(\\d+,\\s*'(\\d+)'\\)/) : null;
                                 var watchTime = timeMatch ? parseInt(timeMatch[1]) : 10;
                                 var videoUrl = startButton.getAttribute('title') || 'unknown';
                                 
@@ -1466,7 +1674,7 @@ class AvisoAutomation:
                                     watch_time: watchTime,
                                     video_url: videoUrl,
                                     button_selector: "span[id='link_ads_start_" + taskId + "']",
-                                    row_class: className
+                                    row_selector: "tr.ads_" + taskId
                                 });
                             }
                         }
@@ -1478,32 +1686,589 @@ class AvisoAutomation:
                 return tasks;
             """)
             
-            # Конвертируем в нужный формат с реальными элементами
+            # НЕ сохраняем элементы в задаче - будем искать их заново при выполнении
             tasks = []
             for task_data in tasks_data:
+                task_info = {
+                    'id': task_data['id'],
+                    'watch_time': task_data['watch_time'],
+                    'video_url': task_data['video_url'],
+                    'button_selector': task_data['button_selector'],
+                    'row_selector': task_data['row_selector']
+                }
+                tasks.append(task_info)
+            
+            logging.info(f"📊 Найдено YouTube заданий: {len(tasks)}")
+            return tasks
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения YouTube заданий: {e}")
+            return []
+
+    # ========== SURF TASKS (НОВЫЙ КОД) ==========
+    def get_surf_tasks(self) -> List[Dict]:
+        """Получение заданий на серфинг"""
+        logging.info("🌊 Поиск заданий на серфинг...")
+        
+        try:
+            self.driver.get(f"{self.base_url}/tasks-surf")
+            time.sleep(5)
+            
+            surf_tasks_data = self.driver.execute_script("""
+                var tasks = [];
+                var rows = document.querySelectorAll("tr[class^='de_']");
+                
+                for (var i = 0; i < rows.length; i++) {
+                    try {
+                        var row = rows[i];
+                        var className = row.className;
+                        var taskIdMatch = className.match(/de_(\\d+)/);
+                        
+                        if (taskIdMatch) {
+                            var taskId = taskIdMatch[1];
+                            var startDiv = row.querySelector("div[id='start-serf-" + taskId + "']");
+                            
+                            if (startDiv) {
+                                var link = startDiv.querySelector("a");
+                                var title = link ? link.textContent.trim() : 'unknown';
+                                var url = link ? link.getAttribute('title') : 'unknown';
+                                
+                                tasks.push({
+                                    id: taskId,
+                                    title: title,
+                                    url: url,
+                                    row_class: className,
+                                    start_div_id: "start-serf-" + taskId
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        // Пропускаем ошибочные элементы
+                    }
+                }
+                
+                return tasks;
+            """)
+            
+            tasks = []
+            for task_data in surf_tasks_data:
                 try:
                     task_row = self.driver.find_element(By.CSS_SELECTOR, f"tr.{task_data['row_class']}")
-                    start_button = self.driver.find_element(By.CSS_SELECTOR, task_data['button_selector'])
+                    start_div = self.driver.find_element(By.ID, task_data['start_div_id'])
+                    start_link = start_div.find_element(By.TAG_NAME, "a")
                     
                     task_info = {
                         'id': task_data['id'],
-                        'element': start_button,
-                        'watch_time': task_data['watch_time'],
-                        'video_url': task_data['video_url'],
-                        'row': task_row
+                        'title': task_data['title'],
+                        'url': task_data['url'],
+                        'row': task_row,
+                        'start_div': start_div,
+                        'start_link': start_link
                     }
                     
                     tasks.append(task_info)
                 except:
                     continue
             
-            logging.info(f"📊 Найдено заданий: {len(tasks)}")
+            logging.info(f"🌊 Найдено серфинг заданий: {len(tasks)}")
             return tasks
             
         except Exception as e:
-            logging.error(f"❌ Ошибка получения заданий: {e}")
+            logging.error(f"❌ Ошибка получения серфинг заданий: {e}")
+            return []
+
+    def get_letter_tasks(self) -> List[Dict]:
+        """Получение заданий на чтение писем"""
+        logging.info("📧 Поиск заданий на чтение писем...")
+        
+        try:
+            self.driver.get(f"{self.base_url}/tasks-letter")
+            time.sleep(5)
+            
+            letter_tasks_data = self.driver.execute_script("""
+                var tasks = [];
+                var startDivs = document.querySelectorAll("div[id^='start-mails-']");
+                
+                for (var i = 0; i < startDivs.length; i++) {
+                    try {
+                        var startDiv = startDivs[i];
+                        var taskIdMatch = startDiv.id.match(/start-mails-(\d+)/);
+                        
+                        if (taskIdMatch) {
+                            var taskId = taskIdMatch[1];
+                            var link = startDiv.querySelector("a");
+                            var title = link ? link.textContent.trim() : 'unknown';
+                            var url = link ? link.getAttribute('title') : 'unknown';
+                            
+                            tasks.push({
+                                id: taskId,
+                                title: title,
+                                url: url,
+                                start_div_id: startDiv.id
+                            });
+                        }
+                    } catch (e) {
+                        // Пропускаем ошибочные элементы
+                    }
+                }
+                
+                return tasks;
+            """)
+            
+            tasks = []
+            for task_data in letter_tasks_data:
+                try:
+                    start_div = self.driver.find_element(By.ID, task_data['start_div_id'])
+                    start_link = start_div.find_element(By.TAG_NAME, "a")
+                    
+                    task_info = {
+                        'id': task_data['id'],
+                        'title': task_data['title'],
+                        'url': task_data['url'],
+                        'start_div': start_div,
+                        'start_link': start_link
+                    }
+                    
+                    tasks.append(task_info)
+                except:
+                    continue
+            
+            logging.info(f"📧 Найдено заданий на письма: {len(tasks)}")
+            return tasks
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка получения заданий писем: {e}")
             return []
     
+    def execute_surf_task(self, task: Dict) -> bool:
+        """Выполнение задания на серфинг"""
+        task_id = task['id']
+        logging.info(f"🌊 Серфинг задание {task_id}: {task['title'][:50]}...")
+        
+        original_window = self.driver.current_window_handle
+        
+        try:
+            # Прокрутка к заданию
+            ActionChains(self.driver).move_to_element(task['row']).perform()
+            time.sleep(random.uniform(1, 3))
+            
+            # Клик по заданию
+            pause = random.uniform(0.5, 10)
+            logging.info(f"⏳ Пауза перед кликом {pause:.1f}с")
+            time.sleep(pause)
+            
+            task['start_link'].click()
+            time.sleep(3)
+            
+            # Ждем появления кнопки "Приступить к просмотру"
+            wait = WebDriverWait(self.driver, 30)
+            
+            try:
+                start_viewing_button = wait.until(
+                    EC.element_to_be_clickable((By.CLASS_NAME, "start-yes-serf"))
+                )
+                start_viewing_button.click()
+                logging.info("✅ Нажата кнопка 'Приступить к просмотру'")
+            except:
+                logging.error("❌ Не найдена кнопка 'Приступить к просмотру'")
+                return False
+            
+            time.sleep(5)
+            
+            # Переключение на новое окно
+            all_windows = self.driver.window_handles
+            new_window = None
+            for window in all_windows:
+                if window != original_window:
+                    self.driver.switch_to.window(window)
+                    new_window = window
+                    break
+            
+            if not new_window:
+                logging.error("❌ Новое окно серфинга не найдено")
+                return False
+            
+            # Ожидание таймера
+            if self.wait_for_surf_timer_completion():
+                logging.info("✅ Серфинг задание завершено!")
+                
+                time.sleep(random.uniform(2, 8))
+                
+                # Возврат на исходную вкладку
+                self.driver.close()
+                self.driver.switch_to.window(original_window)
+                
+                # Обновление страницы
+                logging.info("🔄 Обновление страницы серфинга...")
+                self.driver.refresh()
+                time.sleep(5)
+                
+                return True
+            else:
+                logging.error(f"❌ Серфинг задание {task_id} не завершено")
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка серфинг задания {task_id}: {e}")
+            
+            # Очистка окон
+            try:
+                all_windows = self.driver.window_handles
+                if len(all_windows) > 1:
+                    for window in all_windows:
+                        if window != original_window:
+                            self.driver.switch_to.window(window)
+                            self.driver.close()
+                    self.driver.switch_to.window(original_window)
+                else:
+                    self.driver.switch_to.window(original_window)
+            except:
+                pass
+            
+            return False
+    
+   
+    def wait_for_surf_timer_completion(self) -> bool:
+        """Ожидание завершения таймера серфинга"""
+        logging.info("⏱ Ожидание таймера серфинга...")
+        
+        try:
+            max_wait_time = 300  # 5 минут максимум
+            check_interval = 1
+            checks_count = 0
+            timer_found = False
+            
+            while checks_count < max_wait_time:
+                # Проверяем и таймер и кнопку подтверждения одновременно
+                page_status = self.driver.execute_script("""
+                    var result = {
+                        timer_value: null,
+                        timer_found: false,
+                        confirm_button: null
+                    };
+                    
+                    // ТОЧНЫЙ селектор таймера из вашего кода
+                    var timerElement = document.querySelector('span.timer.notranslate#timer_inp');
+                    if (timerElement) {
+                        result.timer_found = true;
+                        var timerText = timerElement.textContent.trim();
+                        if (/^\\d+$/.test(timerText)) {
+                            result.timer_value = parseInt(timerText);
+                        }
+                    }
+                    
+                    // ТОЧНЫЙ поиск кнопки подтверждения из вашего кода
+                    var confirmLinks = document.querySelectorAll('a.btn_capt');
+                    for (var i = 0; i < confirmLinks.length; i++) {
+                        var link = confirmLinks[i];
+                        var text = link.textContent.trim();
+                        if (text.includes('Подтвердить просмотр')) {
+                            result.confirm_button = link;
+                            break;
+                        }
+                    }
+                    
+                    // Дополнительный поиск по href если кнопка не найдена
+                    if (!result.confirm_button) {
+                        var allLinks = document.querySelectorAll('a[href*="vlss?view=ok"]');
+                        if (allLinks.length > 0) {
+                            result.confirm_button = allLinks[0];
+                        }
+                    }
+                    
+                    return result;
+                """)
+                
+                # Если найдена кнопка подтверждения - сразу кликаем
+                if page_status['confirm_button']:
+                    logging.info("✅ Найдена кнопка подтверждения (таймер уже истёк)")
+                    
+                    # Кликаем по кнопке через JavaScript для надёжности
+                    self.driver.execute_script("arguments[0].click();", page_status['confirm_button'])
+                    logging.info("✅ Нажата кнопка 'Подтвердить просмотр'")
+                    
+                    # Ждем исчезновения кнопки
+                    for i in range(30):
+                        button_exists = self.driver.execute_script("""
+                            var confirmButtons = document.querySelectorAll('a.btn_capt');
+                            for (var i = 0; i < confirmButtons.length; i++) {
+                                var text = confirmButtons[i].textContent.trim();
+                                if (text.includes('Подтвердить просмотр')) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        """)
+                        
+                        if not button_exists:
+                            logging.info("✅ Кнопка подтверждения исчезла")
+                            break
+                        
+                        time.sleep(1)
+                    
+                    return True
+                
+                # Если есть таймер - логируем его значение
+                if page_status['timer_found']:
+                    timer_found = True
+                    if page_status['timer_value'] is not None:
+                        if checks_count % 10 == 0:  # Логируем каждые 10 секунд
+                            logging.info(f"⏰ Таймер серфинга: {page_status['timer_value']}с")
+                        
+                        if page_status['timer_value'] <= 0:
+                            logging.info("✅ Таймер серфинга достиг нуля")
+                            # Даем время на появление кнопки
+                            time.sleep(3)
+                            # Переходим к следующей итерации чтобы найти кнопку
+                            continue
+                else:
+                    # Таймер не найден
+                    if checks_count % 5 == 0:  # Логируем каждые 5 секунд
+                        logging.info("⚠ Таймер не найден, ищем кнопку подтверждения...")
+                
+                time.sleep(check_interval)
+                checks_count += check_interval
+            
+            logging.error("❌ Время ожидания истекло")
+            return False
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка таймера серфинга: {e}")
+            return False
+    
+    def execute_letter_task(self, task: Dict) -> bool:
+        """Выполнение задания на чтение письма"""
+        task_id = task['id']
+        logging.info(f"📧 Письмо задание {task_id}: {task['title'][:50]}...")
+        
+        try:
+            # Клик по заданию
+            pause = random.uniform(0.5, 10)
+            logging.info(f"⏳ Пауза перед кликом {pause:.1f}с")
+            time.sleep(pause)
+            
+            task['start_link'].click()
+            time.sleep(3)
+            
+            # Ждем появления кнопки "Приступить к чтению"
+            wait = WebDriverWait(self.driver, 30)
+            
+            try:
+                start_reading_button = wait.until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a.start-yes-serf"))
+                )
+                start_reading_button.click()
+                logging.info("✅ Нажата кнопка 'Приступить к чтению'")
+            except:
+                logging.error("❌ Не найдена кнопка 'Приступить к чтению'")
+                return False
+            
+            time.sleep(5)
+            
+            # Извлечение данных письма
+            letter_data = self.extract_letter_data()
+            if not letter_data:
+                logging.error("❌ Не удалось извлечь данные письма")
+                return False
+            
+            # Имитация чтения
+            reading_time = HumanBehaviorSimulator.calculate_reading_time(
+                letter_data['text'] + letter_data['question'] + " ".join(letter_data['answers'])
+            )
+            
+            logging.info(f"📚 Имитация чтения письма ({reading_time:.1f}с)...")
+            
+            # Случайные прокрутки во время чтения
+            scroll_count = max(3, int(reading_time / 10))
+            scroll_interval = reading_time / scroll_count
+            
+            for i in range(scroll_count):
+                time.sleep(scroll_interval * random.uniform(0.8, 1.2))
+                self.random_scroll()
+            
+            # Получение ответа от GPT
+            gpt_answer = self.gpt_manager.ask_gpt(
+                letter_data['text'], 
+                letter_data['question'], 
+                letter_data['answers']
+            )
+            
+            # Клик по выбранному ответу
+            answer_index = int(gpt_answer) - 1
+            if 0 <= answer_index < len(letter_data['answer_links']):
+                selected_link = letter_data['answer_links'][answer_index]
+                logging.info(f"🤖 Выбираю ответ {gpt_answer}: {letter_data['answers'][answer_index][:30]}...")
+                
+                selected_link.click()
+                time.sleep(5)
+                
+                # Ожидание завершения страницы с таймером
+                if self.wait_for_letter_timer_and_captcha():
+                    logging.info("✅ Письмо задание завершено!")
+                    
+                    # Возврат на страницу заданий
+                    self.driver.get(f"{self.base_url}/tasks-letter")
+                    time.sleep(5)
+                    
+                    return True
+                else:
+                    logging.error("❌ Ошибка завершения письма")
+                    return False
+            else:
+                logging.error(f"❌ Неверный индекс ответа: {gpt_answer}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка письмо задания {task_id}: {e}")
+            return False
+    
+    def extract_letter_data(self) -> Optional[Dict]:
+        """Извлечение данных письма (текст, вопрос, ответы)"""
+        try:
+            letter_data = self.driver.execute_script("""
+                var container = document.querySelector('.mails-earn-view-container');
+                if (!container) return null;
+                
+                // Извлекаем текст письма
+                var textDiv = container.querySelector('div[style*="padding:10px"]');
+                var letterText = textDiv ? textDiv.textContent.trim() : '';
+                
+                // Извлекаем вопрос
+                var questionDiv = container.querySelector('.tiket b');
+                var question = questionDiv ? questionDiv.parentNode.textContent.replace('Вопрос:', '').trim() : '';
+                
+                // Извлекаем ответы
+                var answerContainer = container.querySelector('.mails-otvet-new');
+                var answerLinks = answerContainer ? answerContainer.querySelectorAll('a') : [];
+                var answers = [];
+                
+                for (var i = 0; i < answerLinks.length; i++) {
+                    answers.push(answerLinks[i].textContent.trim());
+                }
+                
+                return {
+                    text: letterText,
+                    question: question,
+                    answers: answers
+                };
+            """)
+            
+            if letter_data and letter_data['text'] and letter_data['question'] and letter_data['answers']:
+                # Получаем элементы ссылок для клика
+                answer_links = self.driver.find_elements(By.CSS_SELECTOR, ".mails-otvet-new a")
+                
+                result = {
+                    'text': letter_data['text'],
+                    'question': letter_data['question'],
+                    'answers': letter_data['answers'],
+                    'answer_links': answer_links
+                }
+                
+                logging.info(f"📧 Письмо: {len(result['text'])} символов, {len(result['answers'])} ответов")
+                return result
+            
+            return None
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка извлечения данных письма: {e}")
+            return None
+    
+    def wait_for_letter_timer_and_captcha(self) -> bool:
+        """Ожидание таймера письма и прохождение капчи"""
+        logging.info("⏱ Ожидание таймера письма...")
+        
+        try:
+            # Ожидание завершения таймера
+            max_wait_time = 300  # 5 минут максимум
+            check_interval = 1
+            checks_count = 0
+            
+            while checks_count < max_wait_time:
+                timer_value = self.driver.execute_script("""
+                    var timerElement = document.querySelector('span.timer#tmr');
+                    if (timerElement) {
+                        var timerText = timerElement.textContent.trim();
+                        if (/^\d+$/.test(timerText)) {
+                            return parseInt(timerText);
+                        }
+                    }
+                    return null;
+                """)
+                
+                if timer_value is not None:
+                    if checks_count % 10 == 0:  # Логируем каждые 10 секунд
+                        logging.info(f"⏰ Таймер письма: {timer_value}с")
+                    
+                    if timer_value <= 1:
+                        logging.info("✅ Таймер письма завершен")
+                        break
+                else:
+                    # Проверяем появился ли ползунок капчи
+                    slider_found = self.driver.execute_script("""
+                        var slider = document.querySelector('input[name="code"][type="range"]');
+                        return slider !== null;
+                    """)
+                    
+                    if slider_found:
+                        logging.info("✅ Появился ползунок капчи")
+                        break
+                
+                time.sleep(check_interval)
+                checks_count += check_interval
+            
+            # Прохождение капчи с ползунком
+            time.sleep(2)
+            
+            captcha_result = self.driver.execute_script("""
+                var slider = document.querySelector('input[name="code"][type="range"]');
+                if (slider) {
+                    var maxValue = parseInt(slider.getAttribute('max')) || 100;
+                    slider.value = maxValue;
+                    
+                    // Генерируем события для имитации пользовательского ввода
+                    var inputEvent = new Event('input', { bubbles: true });
+                    var changeEvent = new Event('change', { bubbles: true });
+                    slider.dispatchEvent(inputEvent);
+                    slider.dispatchEvent(changeEvent);
+                    
+                    return 'moved';
+                }
+                return 'not_found';
+            """)
+            
+            if captcha_result == 'moved':
+                logging.info("✅ Ползунок передвинут на максимум")
+                time.sleep(2)
+                
+                # Нажатие кнопки "Отправить"
+                submit_result = self.driver.execute_script("""
+                    var submitButtons = document.querySelectorAll('button');
+                    for (var i = 0; i < submitButtons.length; i++) {
+                        var button = submitButtons[i];
+                        if (button.textContent.trim() === 'Отправить') {
+                            button.click();
+                            return 'clicked';
+                        }
+                    }
+                    return 'not_found';
+                """)
+                
+                if submit_result == 'clicked':
+                    logging.info("✅ Нажата кнопка 'Отправить'")
+                    time.sleep(5)
+                    return True
+                else:
+                    logging.warning("⚠ Кнопка 'Отправить' не найдена")
+                    return False
+            else:
+                logging.warning("⚠ Ползунок капчи не найден")
+                return False
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка таймера/капчи письма: {e}")
+            return False
+
+    # ========== YOUTUBE TASKS (СУЩЕСТВУЮЩИЕ МЕТОДЫ) ==========
     def handle_youtube_ads(self) -> bool:
         """ЭФФЕКТИВНАЯ проверка рекламы - JavaScript вместо поиска элементов"""
         logging.info("📺 Проверка рекламы...")
@@ -2025,15 +2790,24 @@ class AvisoAutomation:
             return False
     
     def execute_youtube_task(self, task: Dict) -> bool:
-        """Выполнение задания YouTube"""
+        """ИСПРАВЛЕННОЕ выполнение задания YouTube"""
         task_id = task['id']
         
-        logging.info(f"🎯 Задание {task_id}")
+        logging.info(f"🎯 YouTube задание {task_id}")
         
         original_window = self.driver.current_window_handle
         
         try:
-            ActionChains(self.driver).move_to_element(task['row']).perform()
+            # ЗАНОВО находим элементы для избежания StaleElementReference
+            try:
+                task_row = self.driver.find_element(By.CSS_SELECTOR, task['row_selector'])
+                start_button = self.driver.find_element(By.CSS_SELECTOR, task['button_selector'])
+            except:
+                logging.error(f"❌ Не удалось найти элементы задания {task_id}")
+                return False
+            
+            # Прокрутка к заданию
+            ActionChains(self.driver).move_to_element(task_row).perform()
             time.sleep(random.uniform(1, 3))
             
             # Пауза перед кликом
@@ -2041,31 +2815,14 @@ class AvisoAutomation:
             logging.info(f"⏳ Пауза {pause:.1f}с")
             time.sleep(pause)
             
-            start_button = task['element']
-            
-            # Клик по заданию
+            # Клик по заданию с повторным поиском элемента
             try:
-                viewport_size = self.driver.get_window_size()
-                current_pos = (viewport_size['width'] // 2, viewport_size['height'] // 2)
-                button_rect = start_button.rect
-                
-                target_x = max(10, min(viewport_size['width'] - 10, int(button_rect['x'] + button_rect['width'] // 2)))
-                target_y = max(10, min(viewport_size['height'] - 10, int(button_rect['y'] + button_rect['height'] // 2)))
-                target_pos = (target_x, target_y)
-                
-                curve_points = HumanBehaviorSimulator.generate_bezier_curve(current_pos, target_pos)
-                actions = ActionChains(self.driver)
-                
-                for i, point in enumerate(curve_points[1:], 1):
-                    prev_point = curve_points[i-1]
-                    offset_x = max(-50, min(50, int(point[0] - prev_point[0])))
-                    offset_y = max(-50, min(50, int(point[1] - prev_point[1])))
-                    actions.move_by_offset(offset_x, offset_y)
-                    time.sleep(random.uniform(0.01, 0.03))
-                
-                actions.click(start_button).perform()
+                # Снова находим кнопку перед кликом
+                fresh_button = self.driver.find_element(By.CSS_SELECTOR, task['button_selector'])
+                fresh_button.click()
             except:
-                start_button.click()
+                logging.error(f"❌ Не удалось кликнуть по заданию {task_id}")
+                return False
             
             time.sleep(5)
             
@@ -2088,7 +2845,7 @@ class AvisoAutomation:
             
             # Ожидание по таймеру Aviso
             if self.wait_for_aviso_timer_completion():
-                logging.info("✅ Задание завершено!")
+                logging.info("✅ YouTube задание завершено!")
                 
                 time.sleep(random.uniform(2, 8))
                 
@@ -2103,11 +2860,11 @@ class AvisoAutomation:
                 
                 return True
             else:
-                logging.error(f"❌ Задание {task_id} не завершено")
+                logging.error(f"❌ YouTube задание {task_id} не завершено")
                 return False
                 
         except Exception as e:
-            logging.error(f"❌ Ошибка задания {task_id}: {e}")
+            logging.error(f"❌ Ошибка YouTube задания {task_id}: {e}")
             
             # Очистка окон
             try:
@@ -2125,47 +2882,49 @@ class AvisoAutomation:
             
             return False
     
-    def execute_all_tasks(self) -> int:
-        """Выполнение всех заданий"""
-        logging.info("🚀 Выполнение заданий...")
+    def inter_task_pause(self):
+        """Пауза между заданиями с имитацией активности"""
+        pause_time = random.uniform(1, 20)
+        logging.info(f"⏳ Пауза между заданиями {pause_time:.1f}с")
         
-        tasks = self.get_youtube_tasks()
-        if not tasks:
-            logging.info("📭 Нет заданий")
-            return 0
+        # Разбиваем паузу на интервалы с активностью
+        intervals = max(1, int(pause_time // 10))
+        interval_duration = pause_time / intervals
         
-        completed_tasks = 0
-        random.shuffle(tasks)
+        for _ in range(intervals):
+            if random.random() < 0.5:
+                self.random_mouse_movement()
+            if random.random() < 0.3:
+                self.random_scroll()
+            time.sleep(interval_duration)
+    
+    def execute_all_task_types(self) -> Dict[str, int]:
+        """Выполнение всех типов заданий в случайном порядке"""
+        logging.info("🔄 Начало нового цикла заданий")
         
-        for i, task in enumerate(tasks):
-            logging.info(f"📝 {i+1}/{len(tasks)}")
-            
-            try:
-                if self.execute_youtube_task(task):
-                    completed_tasks += 1
-                    logging.info(f"✅ Выполнено {completed_tasks}/{len(tasks)}")
+        results = {}
+        self.task_coordinator.reset_cycle()
+        
+        while not self.task_coordinator.is_cycle_complete():
+            task_type = self.task_coordinator.get_next_task_type()
+            if task_type:
+                completed = self.execute_tasks_by_type(task_type)
+                results[task_type] = completed
                 
-                # Пауза между заданиями
-                if i < len(tasks) - 1:
-                    pause_time = random.uniform(1, 25)
-                    logging.info(f"⏳ Пауза {pause_time:.1f}с")
-                    
-                    for _ in range(int(pause_time // 12)):
-                        if random.random() < 0.5:
-                            self.random_mouse_movement()
-                        if random.random() < 0.3:
-                            self.random_scroll()
-                        time.sleep(random.uniform(10, 15))
-                
-            except Exception as e:
-                logging.error(f"❌ Критическая ошибка: {e}")
-                continue
+                # Пауза между типами заданий
+                if not self.task_coordinator.is_cycle_complete():
+                    type_pause = random.uniform(30, 120)
+                    logging.info(f"😴 Пауза между типами заданий: {type_pause:.1f}с")
+                    time.sleep(type_pause)
         
-        logging.info(f"🏁 Завершено: {completed_tasks}/{len(tasks)}")
-        return completed_tasks
+        total_completed = sum(results.values())
+        logging.info(f"🏆 Цикл завершен! Всего выполнено: {total_completed} заданий")
+        logging.info(f"📊 Детализация: {results}")
+        
+        return results
     
     def cleanup(self):
-        """Очистка"""
+        """Очистка ресурсов"""
         try:
             if self.driver:
                 self.driver.quit()
@@ -2173,18 +2932,17 @@ class AvisoAutomation:
             pass
         
         try:
-            if self.use_tor:
-                self.tor_manager.stop_tor()
+            self.tor_manager.stop_tor()
         except:
             pass
     
     def run_cycle(self) -> bool:
-        """Один цикл работы"""
-        logging.info("🔄 Начало цикла")
+        """Один полный цикл работы"""
+        logging.info("🔄 Начало полного цикла")
         
         try:
             if not self.setup_driver():
-                logging.error("❌ Ошибка браузера")
+                logging.error("❌ Ошибка настройки браузера")
                 return False
             
             cookies_loaded = self.load_cookies()
@@ -2203,12 +2961,14 @@ class AvisoAutomation:
                 if not self.login():
                     return False
             
-            completed_tasks = self.execute_all_tasks()
+            # Выполнение всех типов заданий
+            results = self.execute_all_task_types()
+            total_completed = sum(results.values())
             
-            if completed_tasks > 0:
-                logging.info(f"✅ Цикл завершен: {completed_tasks} заданий")
+            if total_completed > 0:
+                logging.info(f"✅ Цикл успешно завершен: {total_completed} заданий")
             else:
-                logging.info("ℹ Нет заданий")
+                logging.info("ℹ Цикл завершен, заданий не было")
             
             return True
             
@@ -2219,8 +2979,14 @@ class AvisoAutomation:
             self.cleanup()
     
     def run(self):
-        """Основной цикл"""
-        logging.info("🤖 ЗАПУСК ЭФФЕКТИВНОГО AVISO BOT")
+        """Основной бесконечный цикл"""
+        logging.info("🤖 ЗАПУСК РАСШИРЕННОГО AVISO BOT")
+        logging.info("🆕 НОВЫЕ ФУНКЦИИ:")
+        logging.info("   ✅ Выполнение заданий на серфинг сайтов")
+        logging.info("   ✅ Выполнение заданий на чтение писем с GPT-4")
+        logging.info("   ✅ Координация между тремя типами заданий")
+        logging.info("   ✅ ОБЯЗАТЕЛЬНОЕ использование Tor (без fallback)")
+        logging.info("   ✅ Улучшенная имитация человеческого поведения")
         
         cycle_count = 0
         consecutive_failures = 0
@@ -2236,24 +3002,29 @@ class AvisoAutomation:
                 if success:
                     consecutive_failures = 0
                     
+                    # Случайная пауза от 1 минуты до 2 часов
                     pause_minutes = random.uniform(1, 120)
                     pause_seconds = pause_minutes * 60
                     
                     next_run_time = datetime.now() + timedelta(seconds=pause_seconds)
                     
-                    logging.info(f"😴 Пауза {pause_minutes:.1f} минут")
-                    logging.info(f"⏰ Следующий: {next_run_time.strftime('%H:%M:%S')}")
+                    logging.info(f"😴 Пауза до следующего цикла: {pause_minutes:.1f} минут")
+                    logging.info(f"⏰ Следующий цикл: {next_run_time.strftime('%H:%M:%S')}")
                     
-                    pause_intervals = max(1, int(pause_seconds // 60))
+                    # Разбиваем длинную паузу на интервалы
+                    pause_intervals = max(1, int(pause_seconds // 300))  # Интервалы по 5 минут
                     interval_duration = pause_seconds / pause_intervals
                     
                     for i in range(pause_intervals):
+                        remaining_time = (pause_intervals - i) * interval_duration / 60
+                        if i % 6 == 0:  # Логируем каждые 30 минут
+                            logging.info(f"😴 Ожидание... Осталось: {remaining_time:.1f} минут")
                         time.sleep(interval_duration)
                 else:
                     consecutive_failures += 1
                     
                     if consecutive_failures >= max_consecutive_failures:
-                        logging.error("💥 Много ошибок подряд - остановка")
+                        logging.error("💥 Слишком много ошибок подряд - остановка")
                         break
                     else:
                         pause_minutes = random.uniform(5, 15)
@@ -2262,7 +3033,7 @@ class AvisoAutomation:
                     time.sleep(pause_minutes * 60)
         
         except KeyboardInterrupt:
-            logging.info("🛑 Остановка (Ctrl+C)")
+            logging.info("🛑 Остановка по Ctrl+C")
         except Exception as e:
             logging.error(f"💥 Критическая ошибка: {e}")
         finally:
@@ -2271,30 +3042,36 @@ class AvisoAutomation:
 
 def main():
     """Точка входа в программу"""
-    print("🤖 Aviso YouTube Tasks Automation Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ")
+    print("🤖 Aviso Automation Bot - РАСШИРЕННАЯ ВЕРСИЯ")
     print("=" * 80)
+    print("🆕 НОВЫЕ ФУНКЦИИ:")
+    print("   ✅ Выполнение заданий на серфинг сайтов")
+    print("   ✅ Выполнение заданий на чтение писем с GPT-4")
+    print("   ✅ Координация между тремя типами заданий")
+    print("   ✅ ОБЯЗАТЕЛЬНОЕ использование Tor")
+    print("   ✅ Улучшенная имитация человеческого поведения")
     print("🚀 Автоматический запуск...")
     print("⚠  ВНИМАНИЕ: Используйте бота ответственно!")
-    print("🔧 ИСПРАВЛЕНИЯ:")
-    print("   ✅ Увеличен таймаут Tor с 2 до 20 минут")
-    print("   ✅ ВОССТАНОВЛЕНА проверка IP через 2ip.ru")
-    print("   ✅ Убраны проверки URL новых вкладок")
-    print("   ✅ ИСПРАВЛЕНЫ ошибки координат мыши")
-    print("   ✅ ВОССТАНОВЛЕНА оригинальная логика авторизации")
+    print("🔒 БОТ РАБОТАЕТ ТОЛЬКО ЧЕРЕЗ TOR!")
     print("📋 Функции:")
     print("   - Автоматическая авторизация на aviso.bz")
-    print("   - Выполнение заданий по просмотру YouTube")
+    print("   - Выполнение заданий YouTube с обработкой рекламы")
+    print("   - Выполнение заданий на серфинг сайтов")
+    print("   - Выполнение заданий на чтение писем с ИИ")
+    print("   - Случайный выбор типов заданий")
     print("   - Имитация человеческого поведения")
-    print("   - Работа через Tor прокси ИЛИ БЕЗ прокси (fallback)")
-    print("   - ПРОВЕРКА СМЕНЫ IP через 2ip.ru")
+    print("   - Работа ТОЛЬКО через Tor прокси")
+    print("   - Проверка смены IP через 2ip.ru")
     print("   - Автоматическая установка geckodriver")
+    print("   - Автоматическая установка g4f для GPT-4")
     print("   - Фиксированный User-Agent для аккаунта")
     print("   - Улучшенная имитация опечаток при вводе")
-    print("   - Улучшенная поддержка Termux/Android")
+    print("   - Расчет времени чтения для писем")
+    print("   - Поддержка Termux/Android")
     print("=" * 80)
     print()
     
-    # Создание и запуск бота без подтверждения
+    # Создание и запуск бота
     bot = AvisoAutomation()
     
     try:
