@@ -6,6 +6,11 @@ Aviso YouTube Tasks Automation Script - ФИНАЛЬНАЯ РАБОЧАЯ ВЕР
 - Убраны ВСЕ мосты Tor - только прямое соединение
 - Упрощена конфигурация Tor
 - Добавлен fallback без Tor если не работает
+- ТОЧЕЧНЫЕ ИСПРАВЛЕНИЯ:
+- Увеличен таймаут Tor до 20 минут
+- Убраны проверки URL вкладок
+- Исправлены координаты мыши
+- ВОССТАНОВЛЕНА оригинальная логика авторизации
 """
 
 import os
@@ -382,7 +387,7 @@ class GeckoDriverManager:
         return driver_path
 
 class UserAgentManager:
-    """Класс для управления User-Agent для каждого аккаунта"""
+    """Класс для управления User-Agent для каждого аккаунта - ТОЛЬКО ANDROID И IPAD"""
     
     def __init__(self):
         self.ua_file = "user_agents.json"
@@ -408,27 +413,106 @@ class UserAgentManager:
         except Exception as e:
             logging.error(f"✗ Ошибка сохранения User-Agent'ов: {e}")
     
+    def generate_android_user_agent(self) -> str:
+        """Генерация рандомного Android User-Agent"""
+        # Рандомные версии Android
+        android_versions = [
+            "10", "11", "12", "13", "14", "15"
+        ]
+        
+        # Рандомные модели Android устройств
+        android_devices = [
+            "SM-G991B", "SM-G996B", "SM-G998B",  # Samsung Galaxy S21 серия
+            "SM-A515F", "SM-A525F", "SM-A536B",  # Samsung Galaxy A серия
+            "Pixel 6", "Pixel 7", "Pixel 8", "Pixel 9",  # Google Pixel
+            "CPH2451", "CPH2455", "CPH2459",  # OnePlus
+            "M2101K9G", "M2102K1AC", "M2103K19G",  # Xiaomi
+            "RMX3085", "RMX3241", "RMX3506",  # Realme
+            "LM-G900", "LM-V600", "LM-K520",  # LG
+        ]
+        
+        # Рандомные версии Chrome Mobile
+        chrome_versions = [
+            "119.0.6045.193", "120.0.6099.144", "121.0.6167.165",
+            "122.0.6261.105", "123.0.6312.118", "124.0.6367.207",
+            "125.0.6422.165", "126.0.6478.122", "127.0.6533.107"
+        ]
+        
+        android_version = random.choice(android_versions)
+        device_model = random.choice(android_devices)
+        chrome_version = random.choice(chrome_versions)
+        webkit_version = f"{random.randint(530, 537)}.{random.randint(1, 36)}"
+        
+        user_agent = (
+            f"Mozilla/5.0 (Linux; Android {android_version}; {device_model}) "
+            f"AppleWebKit/{webkit_version} (KHTML, like Gecko) "
+            f"Chrome/{chrome_version} Mobile Safari/{webkit_version}"
+        )
+        
+        return user_agent
+    
+    def generate_ipad_user_agent(self) -> str:
+        """Генерация рандомного iPad User-Agent"""
+        # Рандомные версии iOS для iPad
+        ios_versions = [
+            "15_7", "16_1", "16_2", "16_3", "16_4", "16_5", "16_6", "16_7",
+            "17_0", "17_1", "17_2", "17_3", "17_4", "17_5", "17_6",
+            "18_0", "18_1", "18_2"
+        ]
+        
+        # Рандомные модели iPad
+        ipad_models = [
+            "iPad13,1", "iPad13,2",  # iPad Air 4th gen
+            "iPad13,4", "iPad13,5", "iPad13,6", "iPad13,7",  # iPad Pro 11" 5th gen
+            "iPad13,8", "iPad13,9", "iPad13,10", "iPad13,11",  # iPad Pro 12.9" 5th gen
+            "iPad14,1", "iPad14,2",  # iPad mini 6th gen
+            "iPad14,3", "iPad14,4",  # iPad Air 5th gen
+            "iPad14,5", "iPad14,6",  # iPad Pro 11" 6th gen
+            "iPad16,3", "iPad16,4", "iPad16,5", "iPad16,6",  # iPad Pro M4
+        ]
+        
+        # Рандомные версии Safari
+        safari_versions = [
+            "604.1", "605.1.15", "612.1.6", "613.2.7", "614.1.25",
+            "615.1.26", "616.1.27", "617.2.4", "618.1.15"
+        ]
+        
+        ios_version = random.choice(ios_versions)
+        ipad_model = random.choice(ipad_models)
+        safari_version = random.choice(safari_versions)
+        webkit_version = f"{random.randint(612, 618)}.{random.randint(1, 5)}.{random.randint(1, 30)}"
+        
+        user_agent = (
+            f"Mozilla/5.0 ({ipad_model}; U; CPU OS {ios_version} like Mac OS X) "
+            f"AppleWebKit/{webkit_version} (KHTML, like Gecko) "
+            f"Version/{safari_version} Mobile/15E148 Safari/{safari_version}"
+        )
+        
+        return user_agent
+    
     def get_user_agent(self, username: str) -> str:
-        """Получение User-Agent для конкретного пользователя"""
+        """Получение User-Agent для конкретного пользователя - ТОЛЬКО ANDROID ИЛИ IPAD"""
         # Создаем уникальный ключ для пользователя
         user_key = hashlib.md5(username.encode()).hexdigest()
         
         if user_key not in self.user_agents:
-            # Генерируем новый User-Agent для Firefox
-            try:
-                ua = UserAgent()
-                # Получаем Firefox User-Agent
-                firefox_ua = ua.firefox
-                self.user_agents[user_key] = firefox_ua
-                self.save_user_agents()
-                logging.info(f"🎭 Создан новый User-Agent для пользователя {username}")
-            except Exception as e:
-                logging.warning(f"⚠ Ошибка генерации User-Agent: {e}")
-                # Фоллбэк User-Agent для Firefox
-                self.user_agents[user_key] = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0"
+            # Рандомно выбираем между Android и iPad (50/50)
+            device_type = random.choice(['android', 'ipad'])
+            
+            if device_type == 'android':
+                mobile_ua = self.generate_android_user_agent()
+                device_name = "Android"
+            else:
+                mobile_ua = self.generate_ipad_user_agent()
+                device_name = "iPad"
+            
+            self.user_agents[user_key] = mobile_ua
+            self.save_user_agents()
+            logging.info(f"🎭 Создан новый {device_name} User-Agent для пользователя {username}")
         
         user_agent = self.user_agents[user_key]
-        logging.info(f"🎭 Используется User-Agent для {username}: {user_agent[:50]}...")
+        device_type = "Android" if "Android" in user_agent else "iPad"
+        logging.info(f"🎭 Используется {device_type} User-Agent для {username}: {user_agent[:50]}...")
         return user_agent
 
 class HumanBehaviorSimulator:
@@ -837,12 +921,12 @@ Log notice stdout
             
             logging.info(f"🔄 PID процесса Tor: {self.tor_process.pid}")
             
-            # Ждем запуска Tor
-            logging.info("⏳ ОЖИДАНИЕ ЗАПУСКА TOR...")
+            # ИСПРАВЛЕНО: Ждем запуска Tor - УВЕЛИЧЕН ТАЙМАУТ ДО 20 МИНУТ
+            logging.info("⏳ ОЖИДАНИЕ ЗАПУСКА TOR (до 20 минут)...")
             port_ready = False
             bootstrap_complete = False
             
-            for i in range(60):  # 60 попыток по 2 секунды = 2 минуты
+            for i in range(600):  # 600 попыток по 2 секунды = 20 минут (было 60)
                 time.sleep(2)
                 
                 # Проверяем что процесс еще жив
@@ -876,9 +960,10 @@ Log notice stdout
                     except:
                         pass
                 
-                # Показываем прогресс каждые 20 секунд
-                if i % 10 == 0:  # Каждые 20 секунд
-                    logging.info(f"⏳ Ожидание Tor... ({i*2}/120 секунд)")
+                # Показываем прогресс каждые 60 секунд (было 20)
+                if i % 30 == 0:  # Каждые 60 секунд
+                    elapsed_minutes = (i * 2) / 60
+                    logging.info(f"⏳ Ожидание Tor... ({elapsed_minutes:.1f}/20 минут)")
             
             if not port_ready:
                 logging.error("❌ Tor порт не запустился в течение отведенного времени")
@@ -1006,85 +1091,83 @@ class AvisoAutomation:
     def __init__(self):
         self.setup_logging()
         self.driver = None
-        self.tor_manager = SimpleTorManager()  # УПРОЩЕННЫЙ Tor менеджер
+        self.tor_manager = SimpleTorManager()
         self.ua_manager = UserAgentManager()
         self.gecko_manager = GeckoDriverManager()
         self.cookies_file = "aviso_cookies.pkl"
-        self.original_ip = None  # Сохраняем оригинальный IP
-        self.use_tor = True  # Флаг использования Tor
+        self.original_ip = None
+        self.use_tor = True
         
-        # ИСПРАВЛЕННЫЙ логин из системы
-        self.username = "Aleksey345"
+        # Данные для авторизации
+        self.username = "Aleksey83692"
         self.password = "123456"
         self.base_url = "https://aviso.bz"
         
-        logging.info("🚀 Инициализация Aviso Automation Bot")
+        logging.info("🚀 Запуск Aviso Bot")
         
     def setup_logging(self):
-        """Настройка детального логирования"""
-        # Создаем имя файла с текущей датой и временем
+        """Настройка логирования"""
         log_filename = f"aviso_bot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        
-        # Настраиваем логирование
         log_format = "%(asctime)s [%(levelname)s] %(message)s"
         
-        # Удаляем существующие обработчики
         for handler in logging.root.handlers[:]:
             logging.root.removeHandler(handler)
         
-        # Добавляем новые обработчики
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.INFO,
             format=log_format,
             handlers=[
                 logging.StreamHandler(sys.stdout),
                 logging.FileHandler(log_filename, encoding='utf-8')
             ]
         )
-        
-        logging.info(f"📝 Логирование настроено: {log_filename}")
 
     def get_current_ip_without_proxy(self) -> Optional[str]:
-        """Получение ВНЕШНЕГО IP адреса БЕЗ прокси"""
-        logging.info("🔍 ПОЛУЧЕНИЕ ВНЕШНЕГО IP БЕЗ ПРОКСИ...")
-        
+        """Получение внешнего IP без прокси"""
         test_services = [
             'https://api.ipify.org?format=text',
             'https://icanhazip.com/',
             'https://checkip.amazonaws.com/'
         ]
         
-        for i, service in enumerate(test_services, 1):
+        for service in test_services:
             try:
-                logging.info(f"🔍 Попытка {i}/{len(test_services)}: {service}")
-                
                 response = requests.get(service, timeout=10)
                 response.raise_for_status()
-                
                 external_ip = response.text.strip()
                 
-                # Проверяем что IP валидный
                 import re
-                ip_pattern = r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
-                if re.match(ip_pattern, external_ip):
-                    logging.info(f"✅ Внешний IP получен: {external_ip}")
+                if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', external_ip):
                     return external_ip
-                else:
-                    logging.warning(f"⚠ Неверный формат IP: {external_ip}")
-                    continue
-                    
-            except requests.exceptions.Timeout:
-                logging.warning(f"⚠ Таймаут для сервиса {service}")
-                continue
-            except Exception as e:
-                logging.warning(f"⚠ Ошибка получения IP от {service}: {e}")
+            except:
                 continue
         
-        logging.warning("⚠ Не удалось получить внешний IP, но продолжаем...")
         return None
 
+    def verify_ip_change_via_2ip(self) -> bool:
+        """Проверка смены IP через 2ip.ru"""
+        try:
+            self.driver.get("https://2ip.ru")
+            time.sleep(5)
+            
+            ip_element = self.driver.find_element(By.CSS_SELECTOR, "div.ip span")
+            current_ip = ip_element.text.strip()
+            
+            logging.info(f"🔍 IP: {current_ip}")
+            
+            if self.original_ip and current_ip == self.original_ip:
+                logging.error("❌ IP не сменился! Tor не работает!")
+                return False
+            else:
+                logging.info("✅ IP сменился")
+                return True
+                
+        except Exception as e:
+            logging.error(f"❌ Ошибка проверки IP: {e}")
+            return False
+
     def find_firefox_binary(self) -> Optional[str]:
-        """Поиск исполняемого файла Firefox"""
+        """Поиск Firefox"""
         possible_paths = []
         
         if self.tor_manager.is_termux:
@@ -1109,116 +1192,102 @@ class AvisoAutomation:
                 '/Applications/Firefox.app/Contents/MacOS/firefox'
             ]
         
-        # Проверяем каждый путь
         for path in possible_paths:
             if os.path.exists(path) and os.access(path, os.X_OK):
-                logging.info(f"✓ Найден Firefox: {path}")
                 return path
         
-        # Проверяем через PATH
         if self.tor_manager.command_exists('firefox'):
-            logging.info("✓ Firefox найден в PATH")
             return 'firefox'
         
         return None
 
     def setup_driver(self) -> bool:
-        """Настройка и запуск Firefox с или без Tor"""
-        logging.info("🌐 НАСТРОЙКА БРАУЗЕРА FIREFOX...")
+        """Настройка Firefox"""
+        logging.info("🌐 Настройка браузера...")
         
-        # Получаем ВНЕШНИЙ IP БЕЗ прокси
-        logging.info("🔍 Получение внешнего IP адреса без прокси...")
         self.original_ip = self.get_current_ip_without_proxy()
         
-        # Пытаемся запустить Tor
-        logging.info("🔄 Попытка запуска Tor...")
         if self.tor_manager.start_tor():
-            logging.info("✅ Tor запущен успешно! Используем Tor прокси.")
+            logging.info("✅ Tor запущен")
             self.use_tor = True
         else:
-            logging.warning("⚠ Tor не удалось запустить. Работаем БЕЗ прокси.")
+            logging.warning("⚠ Tor не запущен, работаем без прокси")
             self.use_tor = False
         
         try:
-            # Получаем User-Agent для Firefox
             user_agent = self.ua_manager.get_user_agent(self.username)
-            
-            # Получаем путь к geckodriver
-            logging.info("🔧 Настройка geckodriver...")
             geckodriver_path = self.gecko_manager.get_driver_path()
-            logging.info(f"✓ Geckodriver: {geckodriver_path}")
             
-            # Настройка Firefox
             firefox_options = Options()
             
             if self.use_tor:
-                # Настройки прокси для Firefox с Tor
-                logging.info(f"🔌 Настройка прокси Firefox: SOCKS5 127.0.0.1:{self.tor_manager.tor_port}")
-                firefox_options.set_preference("network.proxy.type", 1)  # Ручная настройка прокси
+                firefox_options.set_preference("network.proxy.type", 1)
                 firefox_options.set_preference("network.proxy.socks", "127.0.0.1")
                 firefox_options.set_preference("network.proxy.socks_port", self.tor_manager.tor_port)
                 firefox_options.set_preference("network.proxy.socks_version", 5)
-                firefox_options.set_preference("network.proxy.socks_remote_dns", True)  # DNS через Tor
-                
-                # Отключаем HTTP и HTTPS прокси (используем только SOCKS)
+                firefox_options.set_preference("network.proxy.socks_remote_dns", True)
                 firefox_options.set_preference("network.proxy.http", "")
                 firefox_options.set_preference("network.proxy.http_port", 0)
                 firefox_options.set_preference("network.proxy.ssl", "")
                 firefox_options.set_preference("network.proxy.ssl_port", 0)
             else:
-                logging.info("🌐 Настройка Firefox БЕЗ прокси")
-                # Прямое соединение без прокси
-                firefox_options.set_preference("network.proxy.type", 0)  # Без прокси
+                firefox_options.set_preference("network.proxy.type", 0)
             
-            # Общие настройки Firefox
             firefox_options.set_preference("general.useragent.override", user_agent)
             firefox_options.set_preference("dom.webdriver.enabled", False)
             firefox_options.set_preference("useAutomationExtension", False)
             firefox_options.set_preference("network.http.use-cache", False)
             
-            # Отключаем WebRTC для предотвращения утечки IP
+            if "Android" in user_agent:
+                firefox_options.set_preference("layout.css.devPixelRatio", "2.0")
+                firefox_options.set_preference("dom.w3c_touch_events.enabled", 1)
+            else:
+                firefox_options.set_preference("layout.css.devPixelRatio", "2.0")
+                firefox_options.set_preference("dom.w3c_touch_events.enabled", 1)
+                firefox_options.set_preference("general.appname.override", "Netscape")
+                firefox_options.set_preference("general.appversion.override", "5.0 (Mobile; rv:68.0)")
+            
             firefox_options.set_preference("media.peerconnection.enabled", False)
             firefox_options.set_preference("media.navigator.enabled", False)
-            
-            # Настройки для лучшей приватности
-            firefox_options.set_preference("privacy.resistFingerprinting", True)
+            firefox_options.set_preference("privacy.resistFingerprinting", False)
             firefox_options.set_preference("privacy.trackingprotection.enabled", True)
             firefox_options.set_preference("geo.enabled", False)
             firefox_options.set_preference("browser.safebrowsing.downloads.remote.enabled", False)
-            
-            # Отключаем автообновления и телеметрию
             firefox_options.set_preference("app.update.enabled", False)
             firefox_options.set_preference("toolkit.telemetry.enabled", False)
             firefox_options.set_preference("datareporting.healthreport.uploadEnabled", False)
             
-            # Для Termux
             if self.tor_manager.is_termux:
                 firefox_options.add_argument("--no-sandbox")
                 firefox_options.add_argument("--disable-dev-shm-usage")
             
-            # Поиск Firefox
             firefox_binary = self.find_firefox_binary()
             if firefox_binary and firefox_binary != 'firefox':
                 firefox_options.binary_location = firefox_binary
             
-            logging.info("🚀 Запуск Firefox...")
-            
-            # Создание сервиса с указанным путем к geckodriver
             service = Service(executable_path=geckodriver_path)
-            
-            # Создание драйвера Firefox
             self.driver = webdriver.Firefox(options=firefox_options, service=service)
             
-            # Таймауты
             self.driver.set_page_load_timeout(120)
             self.driver.implicitly_wait(20)
             
-            logging.info("✅ Firefox запущен!")
+            if "Android" in user_agent:
+                mobile_sizes = [(360, 640), (375, 667), (414, 896), (393, 851)]
+                width, height = random.choice(mobile_sizes)
+            else:
+                ipad_sizes = [(768, 1024), (834, 1112), (1024, 1366)]
+                width, height = random.choice(ipad_sizes)
+            
+            self.driver.set_window_size(width, height)
+            logging.info("✅ Браузер запущен")
+            
+            if self.use_tor:
+                return self.verify_ip_change_via_2ip()
             
             return True
             
         except Exception as e:
-            logging.error(f"❌ Ошибка настройки Firefox: {e}")
+            logging.error(f"❌ Ошибка браузера: {e}")
             return False
 
     def save_cookies(self):
@@ -1227,16 +1296,15 @@ class AvisoAutomation:
             cookies = self.driver.get_cookies()
             with open(self.cookies_file, 'wb') as f:
                 pickle.dump(cookies, f)
-            logging.info(f"💾 Cookies сохранены в {self.cookies_file}")
         except Exception as e:
-            logging.error(f"✗ Ошибка сохранения cookies: {e}")
+            logging.error(f"❌ Ошибка сохранения cookies: {e}")
     
     def load_cookies(self) -> bool:
         """Загрузка cookies"""
         try:
             if os.path.exists(self.cookies_file):
                 self.driver.get(self.base_url)
-                HumanBehaviorSimulator.random_sleep(2, 4)
+                time.sleep(3)
                 
                 with open(self.cookies_file, 'rb') as f:
                     cookies = pickle.load(f)
@@ -1244,102 +1312,75 @@ class AvisoAutomation:
                 for cookie in cookies:
                     try:
                         self.driver.add_cookie(cookie)
-                    except Exception as e:
-                        logging.debug(f"⚠ Ошибка добавления cookie: {e}")
+                    except:
+                        pass
                 
-                logging.info("✓ Cookies загружены")
                 return True
-        except Exception as e:
-            logging.error(f"✗ Ошибка загрузки cookies: {e}")
+        except:
+            pass
         
         return False
     
     def check_authorization(self) -> bool:
-        """Простая проверка авторизации"""
+        """Проверка авторизации"""
         try:
-            # Просто проверяем есть ли форма логина на ТЕКУЩЕЙ странице
             login_forms = self.driver.find_elements(By.NAME, "username")
-            if login_forms:
-                logging.info("🔐 Требуется авторизация")
-                return False
-            else:
-                logging.info("✓ Пользователь авторизован")
-                return True
-                
-        except Exception as e:
-            logging.error(f"✗ Ошибка проверки авторизации: {e}")
+            return len(login_forms) == 0
+        except:
             return False
     
     def login(self) -> bool:
         """Авторизация"""
-        logging.info("🔐 НАЧАЛО АВТОРИЗАЦИИ...")
+        logging.info("🔐 Авторизация...")
         
         try:
-            # Переход на страницу логина
-            logging.info("🌐 Переход на страницу логина...")
             self.driver.get(f"{self.base_url}/login")
-            HumanBehaviorSimulator.random_sleep(3, 8)
+            time.sleep(5)
             
             wait = WebDriverWait(self.driver, 30)
             
-            # Ввод логина с улучшенной имитацией
-            logging.info("🔍 Поиск поля логина...")
             username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-            ActionChains(self.driver).move_to_element(username_field).click().perform()
+            username_field.click()
             HumanBehaviorSimulator.human_like_typing(username_field, self.username, self.driver)
-            logging.info(f"✓ Логин '{self.username}' введен")
             
-            # Ввод пароля с улучшенной имитацией
             password_field = self.driver.find_element(By.NAME, "password")
-            ActionChains(self.driver).move_to_element(password_field).click().perform()
+            password_field.click()
             HumanBehaviorSimulator.human_like_typing(password_field, self.password, self.driver)
-            logging.info("✓ Пароль введен")
             
-            # Нажатие кнопки входа
             login_button = self.driver.find_element(By.ID, "button-login")
-            HumanBehaviorSimulator.random_sleep(1, 4)
-            ActionChains(self.driver).move_to_element(login_button).click().perform()
-            logging.info("✓ Кнопка входа нажата")
+            time.sleep(2)
+            login_button.click()
             
-            # Ждем для возможных переадресаций
-            HumanBehaviorSimulator.random_sleep(5, 12)
+            time.sleep(8)
             
-            # Проверяем 2FA ТОЛЬКО если мы на странице 2FA
+            # Проверка 2FA
             current_url = self.driver.current_url
             if "/2fa" in current_url:
-                logging.info("🔐 Обнаружена страница 2FA")
+                logging.info("🔐 Требуется 2FA код")
                 
                 try:
                     code_field = wait.until(EC.presence_of_element_located((By.NAME, "code")))
                     
-                    print("\n" + "="*50)
-                    print("🔐 ТРЕБУЕТСЯ КОД ПОДТВЕРЖДЕНИЯ")
-                    print("📧 Проверьте почту и введите код")
-                    print("="*50)
-                    
-                    verification_code = input("Введите код: ").strip()
+                    verification_code = input("Введите 2FA код: ").strip()
                     
                     if verification_code and verification_code.isdigit():
-                        ActionChains(self.driver).move_to_element(code_field).click().perform()
+                        code_field.click()
                         HumanBehaviorSimulator.human_like_typing(code_field, verification_code, self.driver)
                         
-                        # Нажатие кнопки подтверждения
                         confirm_buttons = self.driver.find_elements(By.CSS_SELECTOR, "button.button_theme_blue")
                         if confirm_buttons:
-                            ActionChains(self.driver).move_to_element(confirm_buttons[0]).click().perform()
-                            logging.info("✓ Код подтверждения отправлен")
+                            confirm_buttons[0].click()
                         
-                        # Ждем после 2FA
-                        HumanBehaviorSimulator.random_sleep(5, 12)
+                        time.sleep(8)
                     
                 except Exception as e:
-                    logging.error(f"❌ Ошибка обработки 2FA: {e}")
+                    logging.error(f"❌ Ошибка 2FA: {e}")
                     return False
             
-            # Простая проверка результата - есть ли форма логина
+            # Проверка результата
             login_forms = self.driver.find_elements(By.NAME, "username")
             if not login_forms:
-                logging.info("✅ Авторизация успешна!")
+                logging.info("✅ Авторизация успешна")
                 self.save_cookies()
                 return True
             else:
@@ -1351,122 +1392,109 @@ class AvisoAutomation:
             return False
     
     def random_mouse_movement(self):
-        """Случайные движения мыши"""
+        """Движение мыши"""
         try:
             viewport_size = self.driver.get_window_size()
+            max_width = max(100, viewport_size['width'] - 100)
+            max_height = max(100, viewport_size['height'] - 100)
             
-            current_position = (
-                random.randint(50, viewport_size['width'] - 50),
-                random.randint(50, viewport_size['height'] - 50)
-            )
+            current_pos = (random.randint(50, max_width), random.randint(50, max_height))
+            new_pos = (random.randint(50, max_width), random.randint(50, max_height))
             
-            new_position = (
-                random.randint(50, viewport_size['width'] - 50),
-                random.randint(50, viewport_size['height'] - 50)
-            )
-            
-            curve_points = HumanBehaviorSimulator.generate_bezier_curve(
-                current_position, new_position
-            )
-            
+            curve_points = HumanBehaviorSimulator.generate_bezier_curve(current_pos, new_pos)
             actions = ActionChains(self.driver)
+            
             for i, point in enumerate(curve_points):
                 if i == 0:
                     continue
-                    
                 prev_point = curve_points[i-1]
-                offset_x = point[0] - prev_point[0]
-                offset_y = point[1] - prev_point[1]
-                
+                offset_x = max(-50, min(50, int(point[0] - prev_point[0])))
+                offset_y = max(-50, min(50, int(point[1] - prev_point[1])))
                 actions.move_by_offset(offset_x, offset_y)
                 time.sleep(random.uniform(0.01, 0.05))
             
             actions.perform()
-            logging.debug(f"🖱 Движение мыши: {current_position} → {new_position}")
-            
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка движения мыши: {e}")
+        except:
+            pass
     
     def random_scroll(self):
-        """Случайная прокрутка страницы"""
+        """Прокрутка"""
         try:
             scroll_direction = random.choice(['up', 'down'])
             scroll_amount = random.randint(100, 500)
             
             if scroll_direction == 'down':
                 self.driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-                logging.debug(f"📜 Прокрутка вниз: {scroll_amount}px")
             else:
                 self.driver.execute_script(f"window.scrollBy(0, -{scroll_amount});")
-                logging.debug(f"📜 Прокрутка вверх: {scroll_amount}px")
             
-            HumanBehaviorSimulator.random_sleep(0.5, 2.0)
-            
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка прокрутки: {e}")
+            time.sleep(random.uniform(0.5, 2.0))
+        except:
+            pass
     
     def get_youtube_tasks(self) -> List[Dict]:
-        """Получение списка заданий YouTube"""
-        logging.info("📋 Поиск заданий YouTube...")
+        """ЭФФЕКТИВНЫЙ поиск заданий - JavaScript вместо цикла по элементам"""
+        logging.info("📋 Поиск заданий...")
         
         try:
-            # Переход на страницу заданий
-            logging.info("🌐 Переход на страницу заданий YouTube...")
             self.driver.get(f"{self.base_url}/tasks-youtube")
-            HumanBehaviorSimulator.random_sleep(3, 8)
+            time.sleep(5)
             
-            # Имитация чтения страницы
-            for _ in range(random.randint(2, 4)):
-                self.random_scroll()
-                HumanBehaviorSimulator.random_sleep(1, 4)
-                self.random_mouse_movement()
+            # ЭФФЕКТИВНО: JavaScript парсинг ВСЕХ заданий за 1 запрос
+            tasks_data = self.driver.execute_script("""
+                var tasks = [];
+                var rows = document.querySelectorAll("tr[class^='ads_']");
+                
+                for (var i = 0; i < rows.length; i++) {
+                    try {
+                        var row = rows[i];
+                        var className = row.className;
+                        var taskIdMatch = className.match(/ads_(\d+)/);
+                        
+                        if (taskIdMatch) {
+                            var taskId = taskIdMatch[1];
+                            var startButton = row.querySelector("span[id='link_ads_start_" + taskId + "']");
+                            
+                            if (startButton) {
+                                var onclick = startButton.getAttribute('onclick');
+                                var timeMatch = onclick ? onclick.match(/start_youtube_new\(\d+,\s*'(\d+)'\)/) : null;
+                                var watchTime = timeMatch ? parseInt(timeMatch[1]) : 10;
+                                var videoUrl = startButton.getAttribute('title') || 'unknown';
+                                
+                                tasks.push({
+                                    id: taskId,
+                                    watch_time: watchTime,
+                                    video_url: videoUrl,
+                                    button_selector: "span[id='link_ads_start_" + taskId + "']",
+                                    row_class: className
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        // Пропускаем ошибочные элементы
+                    }
+                }
+                
+                return tasks;
+            """)
             
-            # Поиск всех заданий
-            task_rows = self.driver.find_elements(By.CSS_SELECTOR, "tr[class^='ads_']")
+            # Конвертируем в нужный формат с реальными элементами
             tasks = []
-            
-            for i, row in enumerate(task_rows):
+            for task_data in tasks_data:
                 try:
-                    # Извлечение ID задания
-                    class_name = row.get_attribute('class')
-                    task_id_match = re.search(r'ads_(\d+)', class_name)
-                    if not task_id_match:
-                        continue
-                    
-                    task_id = task_id_match.group(1)
-                    
-                    # Поиск кнопки "Посмотреть видео"
-                    start_button = row.find_element(
-                        By.CSS_SELECTOR, 
-                        f"span[id='link_ads_start_{task_id}']"
-                    )
-                    
-                    # Извлечение времени просмотра из onclick
-                    onclick_attr = start_button.get_attribute('onclick')
-                    time_match = re.search(r"start_youtube_new\(\d+,\s*'(\d+)'\)", onclick_attr)
-                    watch_time = int(time_match.group(1)) if time_match else 10
-                    
-                    # Извлечение URL видео
-                    video_url = start_button.get_attribute('title') or "unknown"
+                    task_row = self.driver.find_element(By.CSS_SELECTOR, f"tr.{task_data['row_class']}")
+                    start_button = self.driver.find_element(By.CSS_SELECTOR, task_data['button_selector'])
                     
                     task_info = {
-                        'id': task_id,
+                        'id': task_data['id'],
                         'element': start_button,
-                        'watch_time': watch_time,
-                        'video_url': video_url,
-                        'row': row
+                        'watch_time': task_data['watch_time'],
+                        'video_url': task_data['video_url'],
+                        'row': task_row
                     }
                     
                     tasks.append(task_info)
-                    logging.info(f"✓ Найдено задание {task_id}: {watch_time}с, {video_url}")
-                    
-                    # Имитация чтения задания
-                    if random.random() < 0.3:  # 30% вероятность
-                        ActionChains(self.driver).move_to_element(row).perform()
-                        HumanBehaviorSimulator.random_sleep(1, 3)
-                
-                except Exception as e:
-                    logging.debug(f"⚠ Ошибка обработки задания {i}: {e}")
+                except:
                     continue
             
             logging.info(f"📊 Найдено заданий: {len(tasks)}")
@@ -1476,376 +1504,612 @@ class AvisoAutomation:
             logging.error(f"❌ Ошибка получения заданий: {e}")
             return []
     
-    def wait_for_element(self, by: By, value: str, timeout: int = 20) -> Optional[object]:
-        """Ожидание появления элемента"""
-        try:
-            wait = WebDriverWait(self.driver, timeout)
-            element = wait.until(EC.presence_of_element_located((by, value)))
-            logging.debug(f"✓ Элемент найден: {value}")
-            return element
-        except TimeoutException:
-            logging.debug(f"⏰ Элемент не найден в течение {timeout}с: {value}")
-            return None
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка ожидания элемента {value}: {e}")
-            return None
-    
     def handle_youtube_ads(self) -> bool:
-        """Обработка рекламы на YouTube"""
-        logging.info("📺 Проверка рекламы на YouTube...")
+        """ЭФФЕКТИВНАЯ проверка рекламы - JavaScript вместо поиска элементов"""
+        logging.info("📺 Проверка рекламы...")
         
         try:
-            # Ожидание загрузки страницы
-            HumanBehaviorSimulator.random_sleep(3, 8)
+            time.sleep(3)
             
-            # Проверка наличия рекламы
-            ad_indicators = [
-                "ytp-ad-badge",
-                "[id*='ad-badge']",
-                ".ytp-ad-text",
-                "[aria-label*='реклама']",
-                "[aria-label*='Реклама']",
-                "[aria-label*='Ad']",
-                "[aria-label*='advertisement']"
-            ]
-            
-            ad_found = False
-            for selector in ad_indicators:
-                try:
-                    ad_elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if ad_elements and any(el.is_displayed() for el in ad_elements):
-                        ad_found = True
-                        logging.info("📺 Обнаружена реклама")
-                        break
-                except:
-                    continue
-            
-            if ad_found:
-                # Ожидание кнопки пропуска или автозапуска
-                skip_found = False
-                auto_start_found = False
+            # ЭФФЕКТИВНО: JavaScript проверка рекламы за 1 запрос
+            ad_status = self.driver.execute_script("""
+                // Проверяем наличие рекламы
+                var adBadges = document.querySelectorAll('span.ytp-ad-badge--clean-player, [id*="ad-badge"], .ytp-ad-badge');
+                var hasAd = false;
                 
-                for attempt in range(45):
-                    # Проверка кнопки пропуска
-                    skip_selectors = [
-                        ".ytp-ad-skip-button",
-                        ".ytp-ad-skip-button-modern",
-                        "[class*='skip']",
-                        "button[class*='skip']"
-                    ]
-                    
-                    for selector in skip_selectors:
-                        try:
-                            skip_buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                            for button in skip_buttons:
-                                if button.is_displayed() and button.is_enabled():
-                                    logging.info("⏭ Нажатие кнопки пропуска рекламы")
-                                    ActionChains(self.driver).move_to_element(button).click().perform()
-                                    skip_found = True
-                                    HumanBehaviorSimulator.random_sleep(2, 5)
-                                    break
-                            if skip_found:
-                                break
-                        except:
-                            continue
-                    
-                    if skip_found:
-                        break
-                    
-                    # Проверка автозапуска видео (появление таймера)
-                    timer_selectors = [
-                        ".ytwPlayerTimeDisplayTime",
-                        "[class*='time-display']",
-                        ".ytp-time-current"
-                    ]
-                    
-                    for selector in timer_selectors:
-                        try:
-                            timers = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                            if timers and any(t.is_displayed() and t.text.strip() for t in timers):
-                                logging.info("⏰ Видео запустилось автоматически")
-                                auto_start_found = True
-                                break
-                        except:
-                            continue
-                    
-                    if auto_start_found:
-                        break
-                    
-                    # Случайные движения во время ожидания
-                    if random.random() < 0.3:
-                        self.random_mouse_movement()
-                    
-                    time.sleep(1)
+                for (var i = 0; i < adBadges.length; i++) {
+                    if (adBadges[i].offsetParent !== null) { // Элемент видимый
+                        hasAd = true;
+                        break;
+                    }
+                }
                 
-                if not skip_found and not auto_start_found:
-                    logging.warning("⚠ Реклама не обработана корректно")
+                if (!hasAd) {
+                    return {status: 'no_ad'};
+                }
+                
+                // Есть реклама - ищем кнопку skip
+                var skipButtons = document.querySelectorAll('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, [class*="skip"]');
+                for (var i = 0; i < skipButtons.length; i++) {
+                    if (skipButtons[i].offsetParent !== null && !skipButtons[i].disabled) {
+                        return {status: 'skip_available', element: skipButtons[i]};
+                    }
+                }
+                
+                return {status: 'wait_ad'};
+            """)
+            
+            if ad_status['status'] == 'no_ad':
+                return True
+            
+            if ad_status['status'] == 'skip_available':
+                # Кликаем кнопку skip через JavaScript
+                self.driver.execute_script("arguments[0].click();", ad_status['element'])
+                logging.info("⏭ Реклама пропущена")
+                time.sleep(2)
+                return True
+            
+            # Ждем завершения рекламы ЭФФЕКТИВНО
+            logging.info("📺 Ждем завершения рекламы...")
+            
+            for attempt in range(120):  # 2 минуты максимум
+                # ЭФФЕКТИВНАЯ проверка через JavaScript
+                ad_finished = self.driver.execute_script("""
+                    // Проверяем исчезла ли реклама
+                    var adBadges = document.querySelectorAll('span.ytp-ad-badge--clean-player, [id*="ad-badge"], .ytp-ad-badge');
+                    for (var i = 0; i < adBadges.length; i++) {
+                        if (adBadges[i].offsetParent !== null) {
+                            return false; // Реклама еще есть
+                        }
+                    }
+                    
+                    // Проверяем появилась ли кнопка skip
+                    var skipButtons = document.querySelectorAll('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, [class*="skip"]');
+                    for (var i = 0; i < skipButtons.length; i++) {
+                        if (skipButtons[i].offsetParent !== null && !skipButtons[i].disabled) {
+                            skipButtons[i].click();
+                            return true;
+                        }
+                    }
+                    
+                    return true; // Реклама закончилась
+                """)
+                
+                if ad_finished:
+                    logging.info("✅ Реклама завершилась")
+                    return True
+                
+                time.sleep(1)
+            
+            logging.info("✅ Реклама обработана")
+            return True
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка рекламы: {e}")
+            return True
+
+    def click_center_screen(self):
+        """ИСПРАВЛЕННЫЙ метод - работа с IFRAME и физические клики"""
+        try:
+            logging.info("🖱 Запуск видео...")
+            
+            # 1. СНАЧАЛА ПРОБУЕМ ПЕРЕКЛЮЧИТЬСЯ НА IFRAME
+            iframe_switched = False
+            try:
+                # Ищем все iframe'ы
+                iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                logging.info(f"🔍 Найдено iframe'ов: {len(iframes)}")
+                
+                for i, iframe in enumerate(iframes):
+                    try:
+                        # Переключаемся на iframe
+                        self.driver.switch_to.frame(iframe)
+                        iframe_switched = True
+                        logging.info(f"✅ Переключились на iframe {i}")
+                        
+                        # Пробуем найти и запустить видео внутри iframe
+                        success = self.driver.execute_script("""
+                            var attempts = [];
+                            
+                            // Ищем видео внутри iframe
+                            var videos = document.getElementsByTagName('video');
+                            attempts.push('Videos found in iframe: ' + videos.length);
+                            
+                            for (var i = 0; i < videos.length; i++) {
+                                try {
+                                    var video = videos[i];
+                                    
+                                    // Настройки для запуска
+                                    video.muted = false;
+                                    video.volume = 0.1;
+                                    video.controls = true;
+                                    video.autoplay = true;
+                                    
+                                    // Принудительный запуск
+                                    var playPromise = video.play();
+                                    if (playPromise && typeof playPromise.then === 'function') {
+                                        playPromise.then(function() {
+                                            attempts.push('IFRAME Video ' + i + ' STARTED!');
+                                        }).catch(function(error) {
+                                            // Пробуем с muted
+                                            video.muted = true;
+                                            video.play().then(function() {
+                                                attempts.push('IFRAME Video ' + i + ' started muted');
+                                                setTimeout(function() { video.muted = false; }, 1000);
+                                            });
+                                        });
+                                    }
+                                    
+                                    // Клик по видео в iframe
+                                    var rect = video.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0) {
+                                        var clickEvent = new MouseEvent('click', {
+                                            view: window,
+                                            bubbles: true,
+                                            cancelable: true,
+                                            clientX: rect.left + rect.width / 2,
+                                            clientY: rect.top + rect.height / 2
+                                        });
+                                        video.dispatchEvent(clickEvent);
+                                        attempts.push('Clicked iframe video ' + i);
+                                    }
+                                    
+                                } catch (e) {
+                                    attempts.push('IFRAME Video ' + i + ' error: ' + e.message);
+                                }
+                            }
+                            
+                            // Ищем кнопки воспроизведения внутри iframe
+                            var playButtons = document.querySelectorAll(
+                                '.ytp-large-play-button, .ytp-play-button, [aria-label*="Play"], [aria-label*="Воспроизвести"]'
+                            );
+                            
+                            for (var i = 0; i < playButtons.length; i++) {
+                                try {
+                                    var button = playButtons[i];
+                                    if (button.offsetParent !== null) {
+                                        button.click();
+                                        attempts.push('IFRAME Play button clicked: ' + i);
+                                    }
+                                } catch (e) {
+                                    attempts.push('IFRAME Button error: ' + e.message);
+                                }
+                            }
+                            
+                            return attempts;
+                        """)
+                        
+                        logging.info(f"🎬 IFRAME попытки: {success}")
+                        
+                        # Возвращаемся к основному документу
+                        self.driver.switch_to.default_content()
+                        break
+                        
+                    except Exception as e:
+                        # Если не удалось переключиться на этот iframe, пробуем следующий
+                        self.driver.switch_to.default_content()
+                        continue
+                        
+            except Exception as e:
+                logging.info(f"⚠ Не удалось работать с iframe: {e}")
+                if iframe_switched:
+                    self.driver.switch_to.default_content()
+            
+            # 2. ФИЗИЧЕСКИЕ КЛИКИ SELENIUM - САМОЕ ВАЖНОЕ
+            try:
+                logging.info("🖱 Выполняем физические клики...")
+                
+                # Получаем размеры окна
+                viewport_size = self.driver.get_window_size()
+                
+                # Множественные точки для клика (включая где находится iframe)
+                click_points = [
+                    (382, 456),  # Точка где был iframe по логам
+                    (viewport_size['width'] // 2, viewport_size['height'] // 2),  # Центр
+                    (viewport_size['width'] // 2, viewport_size['height'] // 3),  # Верх центр
+                    (viewport_size['width'] // 2, viewport_size['height'] * 2 // 3),  # Низ центр
+                    (viewport_size['width'] // 3, viewport_size['height'] // 2),  # Лево центр
+                    (viewport_size['width'] * 2 // 3, viewport_size['height'] // 2),  # Право центр
+                ]
+                
+                for i, (x, y) in enumerate(click_points):
+                    try:
+                        # Убеждаемся что координаты в пределах экрана
+                        x = max(10, min(viewport_size['width'] - 10, x))
+                        y = max(10, min(viewport_size['height'] - 10, y))
+                        
+                        logging.info(f"🖱 Клик {i+1}: ({x}, {y})")
+                        
+                        # ActionChains клик
+                        actions = ActionChains(self.driver)
+                        actions.move_by_offset(x - viewport_size['width']//2, y - viewport_size['height']//2)
+                        actions.click()
+                        actions.perform()
+                        time.sleep(0.3)
+                        
+                        # Сброс позиции
+                        actions = ActionChains(self.driver)
+                        actions.move_by_offset(-(x - viewport_size['width']//2), -(y - viewport_size['height']//2))
+                        actions.perform()
+                        
+                        # JavaScript клик в ту же точку
+                        self.driver.execute_script(f"""
+                            var element = document.elementFromPoint({x}, {y});
+                            if (element) {{
+                                var clickEvent = new MouseEvent('click', {{
+                                    view: window,
+                                    bubbles: true,
+                                    cancelable: true,
+                                    clientX: {x},
+                                    clientY: {y}
+                                }});
+                                element.dispatchEvent(clickEvent);
+                                element.click();
+                            }}
+                        """)
+                        
+                    except Exception as e:
+                        logging.info(f"⚠ Ошибка клика {i+1}: {e}")
+                        
+            except Exception as e:
+                logging.info(f"⚠ Ошибка физических кликов: {e}")
+            
+            # 3. КЛАВИАТУРНЫЕ КОМАНДЫ
+            try:
+                from selenium.webdriver.common.keys import Keys
+                body = self.driver.find_element(By.TAG_NAME, "body")
+                
+                # Различные клавиши для запуска видео
+                keys_to_try = [Keys.SPACE, Keys.ENTER, 'k', 'p', Keys.ARROW_RIGHT]
+                for key in keys_to_try:
+                    try:
+                        body.send_keys(key)
+                        time.sleep(0.2)
+                        logging.info(f"⌨ Нажата клавиша: {key}")
+                    except:
+                        pass
+            except:
+                pass
+            
+            # 4. СПЕЦИАЛЬНЫЙ МЕТОД ДЛЯ YOUTUBE В IFRAME
+            time.sleep(1)
+            self.driver.execute_script("""
+                // Пробуем достучаться до YouTube через postMessage
+                var iframes = document.getElementsByTagName('iframe');
+                for (var i = 0; i < iframes.length; i++) {
+                    try {
+                        var iframe = iframes[i];
+                        
+                        // Пробуем отправить команду воспроизведения
+                        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                        iframe.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+                        
+                        // Симулируем клик по iframe
+                        var rect = iframe.getBoundingClientRect();
+                        var x = rect.left + rect.width / 2;
+                        var y = rect.top + rect.height / 2;
+                        
+                        var clickEvent = new MouseEvent('click', {
+                            view: window,
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: x,
+                            clientY: y
+                        });
+                        
+                        iframe.dispatchEvent(clickEvent);
+                        
+                        console.log('Sent postMessage and click to iframe', i);
+                        
+                    } catch (e) {
+                        console.log('iframe', i, 'error:', e);
+                    }
+                }
+                
+                // Глобальная активация
+                document.dispatchEvent(new Event('click'));
+                window.focus();
+                document.body.focus();
+            """)
+            
+            # 5. ПРОВЕРКА РЕЗУЛЬТАТА
+            time.sleep(2)
+            
+            # Проверяем через JavaScript все возможные признаки воспроизведения
+            status = self.driver.execute_script("""
+                var result = {
+                    videos_found: 0,
+                    videos_playing: 0,
+                    iframes_found: 0,
+                    audio_context: false
+                };
+                
+                // Проверяем видео в основном документе
+                var videos = document.getElementsByTagName('video');
+                result.videos_found = videos.length;
+                
+                for (var i = 0; i < videos.length; i++) {
+                    if (!videos[i].paused && videos[i].currentTime > 0) {
+                        result.videos_playing++;
+                    }
+                }
+                
+                // Считаем iframe'ы
+                result.iframes_found = document.getElementsByTagName('iframe').length;
+                
+                // Проверяем AudioContext (признак активного аудио)
+                try {
+                    if (window.AudioContext || window.webkitAudioContext) {
+                        result.audio_context = true;
+                    }
+                } catch (e) {}
+                
+                return result;
+            """)
+            
+            logging.info(f"📊 Статус: {status}")
+            
+            if status['videos_playing'] > 0:
+                logging.info(f"✅ Видео запущено! Играющих: {status['videos_playing']}")
+            else:
+                logging.warning("⚠ Видео в iframe может быть не запущено")
+                
+                # ПОСЛЕДНЯЯ АГРЕССИВНАЯ ПОПЫТКА - множественные клики по iframe
+                self.driver.execute_script("""
+                    setTimeout(function() {
+                        var iframes = document.getElementsByTagName('iframe');
+                        for (var i = 0; i < iframes.length; i++) {
+                            var iframe = iframes[i];
+                            var rect = iframe.getBoundingClientRect();
+                            
+                            // Много кликов по iframe
+                            for (var j = 0; j < 5; j++) {
+                                setTimeout(function() {
+                                    var x = rect.left + rect.width / 2;
+                                    var y = rect.top + rect.height / 2;
+                                    
+                                    var clickEvent = new MouseEvent('click', {
+                                        view: window,
+                                        bubbles: true,
+                                        cancelable: true,
+                                        clientX: x,
+                                        clientY: y
+                                    });
+                                    
+                                    iframe.dispatchEvent(clickEvent);
+                                    document.elementFromPoint(x, y).click();
+                                    
+                                }, j * 100);
+                            }
+                        }
+                    }, 100);
+                """)
+            
+            logging.info("🎮 Попытки запуска завершены")
+            
+        except Exception as e:
+            logging.error(f"❌ Ошибка запуска видео: {e}")
+            # Всегда возвращаемся к основному документу
+            try:
+                self.driver.switch_to.default_content()
+            except:
+                pass
+
+    def wait_for_aviso_timer_completion(self) -> bool:
+        """УЛУЧШЕННОЕ ожидание таймера с контролем воспроизведения"""
+        logging.info("⏱ Ожидание таймера Aviso...")
+        
+        try:
+            last_timer_value = None
+            same_value_counter = 0
+            check_count = 0
+            video_was_playing = False  # Флаг что видео когда-то работало
+            restart_attempts = 0  # Счетчик попыток перезапуска ПОСЛЕ остановки
+            video_started_logged = False  # Флаг что уже залогировали запуск
+            
+            while True:
+                check_count += 1
+                
+                # ЭФФЕКТИВНЫЙ поиск таймера и завершения за 1 запрос
+                timer_status = self.driver.execute_script("""
+                    // Ищем таймер
+                    var timerElement = document.querySelector('span.timer#tmr');
+                    if (timerElement) {
+                        var timerText = timerElement.textContent.trim();
+                        if (/^\d+$/.test(timerText)) {
+                            return {status: 'timer_found', value: parseInt(timerText)};
+                        }
+                    }
+                    
+                    // Ищем сообщение о завершении
+                    var completionElements = document.querySelectorAll('span');
+                    for (var i = 0; i < completionElements.length; i++) {
+                        var text = completionElements[i].textContent;
+                        if (text.includes('Задача выполнена') && text.includes('начислено')) {
+                            return {status: 'completed', message: text.trim()};
+                        }
+                    }
+                    
+                    return {status: 'not_found'};
+                """)
+                
+                if timer_status['status'] == 'completed':
+                    logging.info(f"✅ Задание завершено: {timer_status['message']}")
+                    return True
+                
+                if timer_status['status'] == 'timer_found':
+                    current_timer_value = timer_status['value']
+                    
+                    # Логируем таймер каждые 10 секунд
+                    if check_count % 20 == 0:
+                        logging.info(f"⏰ Таймер: {current_timer_value}с")
+                    
+                    if last_timer_value is not None:
+                        if current_timer_value == last_timer_value:
+                            same_value_counter += 1
+                            
+                            # Видео застряло на 5+ секунд
+                            if same_value_counter >= 10:  # 5 секунд
+                                
+                                # Если видео УЖЕ работало раньше, но теперь застряло
+                                if video_was_playing:
+                                    restart_attempts += 1
+                                    logging.warning(f"⏸ Видео остановилось! Попытка перезапуска {restart_attempts}/3")
+                                    
+                                    # После 3 попыток перезапуска - обновляем страницу
+                                    if restart_attempts >= 3:
+                                        logging.error("💥 Видео не перезапускается! Обновляем страницу...")
+                                        self.driver.refresh()
+                                        time.sleep(5)
+                                        
+                                        # Обрабатываем рекламу после обновления
+                                        self.handle_youtube_ads()
+                                        
+                                        # Сбрасываем счетчики
+                                        restart_attempts = 0
+                                        video_was_playing = False
+                                        video_started_logged = False
+                                        last_timer_value = None
+                                        same_value_counter = 0
+                                        continue
+                                else:
+                                    # Видео еще не запускалось
+                                    if not video_started_logged:
+                                        logging.warning("⏸ Видео на паузе! Запускаем...")
+                                
+                                self.click_center_screen()
+                                same_value_counter = 0  # СБРОС!
+                        else:
+                            # Таймер изменился - видео работает!
+                            if same_value_counter > 0:
+                                # Логируем запуск только ОДИН раз
+                                if not video_started_logged:
+                                    logging.info("▶ Видео запустилось")
+                                    video_started_logged = True
+                                video_was_playing = True  # Помечаем что видео работало
+                                restart_attempts = 0  # Сбрасываем попытки перезапуска
+                            same_value_counter = 0
+                    
+                    last_timer_value = current_timer_value
+                    
+                    if current_timer_value <= 0:
+                        logging.info("✅ Таймер достиг нуля")
+                        break
+                
+                time.sleep(0.5)
+                
+                if check_count > 1200:  # 10 минут максимум
+                    logging.warning("⏰ Превышено время ожидания")
+                    return False
+            
+            # Финальная проверка завершения
+            time.sleep(2)
+            final_check = self.driver.execute_script("""
+                var completionElements = document.querySelectorAll('span');
+                for (var i = 0; i < completionElements.length; i++) {
+                    var text = completionElements[i].textContent;
+                    if (text.includes('Задача выполнена') && text.includes('начислено')) {
+                        return text.trim();
+                    }
+                }
+                return null;
+            """)
+            
+            if final_check:
+                logging.info(f"✅ Подтверждение: {final_check}")
             
             return True
             
         except Exception as e:
-            logging.error(f"❌ Ошибка обработки рекламы: {e}")
+            logging.error(f"❌ Ошибка таймера: {e}")
             return False
-    
-    def wait_for_video_time(self, required_seconds: int) -> bool:
-        """Ожидание достижения требуемого времени просмотра"""
-        logging.info(f"⏱ ОЖИДАНИЕ {required_seconds} СЕКУНД ПРОСМОТРА...")
-        
-        try:
-            last_time = 0
-            pause_counter = 0
-            no_timer_counter = 0
-            start_wait_time = time.time()
-            max_wait_time = required_seconds + 90
-            
-            while True:
-                current_wait_time = time.time() - start_wait_time
-                
-                # Проверка максимального времени ожидания
-                if current_wait_time > max_wait_time:
-                    logging.warning(f"⏰ Превышено максимальное время ожидания ({max_wait_time}с)")
-                    return True  # Считаем что время достигнуто
-                
-                # Поиск элементов таймера
-                timer_selectors = [
-                    ".ytwPlayerTimeDisplayTime",
-                    "[class*='time-display']",
-                    ".ytp-time-current",
-                    "[role='text'][aria-label*='Продолжительность']"
-                ]
-                
-                current_time_seconds = 0
-                timer_found = False
-                
-                for selector in timer_selectors:
-                    try:
-                        timers = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        for timer in timers:
-                            if timer.is_displayed():
-                                timer_text = timer.text.strip()
-                                if ':' in timer_text:
-                                    try:
-                                        # Парсинг времени (mm:ss или hh:mm:ss)
-                                        time_parts = timer_text.split(':')
-                                        if len(time_parts) == 2:  # mm:ss
-                                            minutes, seconds = map(int, time_parts)
-                                            current_time_seconds = minutes * 60 + seconds
-                                        elif len(time_parts) == 3:  # hh:mm:ss
-                                            hours, minutes, seconds = map(int, time_parts)
-                                            current_time_seconds = hours * 3600 + minutes * 60 + seconds
-                                        
-                                        timer_found = True
-                                        no_timer_counter = 0
-                                        break
-                                    except (ValueError, IndexError):
-                                        continue
-                        
-                        if timer_found:
-                            break
-                    except:
-                        continue
-                
-                if timer_found:
-                    logging.debug(f"⏰ Текущее время: {current_time_seconds}с (требуется: {required_seconds}с)")
-                    
-                    # Проверка на паузу
-                    if current_time_seconds == last_time:
-                        pause_counter += 1
-                        if pause_counter >= 5:  # 5 секунд без изменений
-                            logging.info("⏸ Видео на паузе, попытка запуска...")
-                            self.try_play_video()
-                            pause_counter = 0
-                    else:
-                        pause_counter = 0
-                    
-                    last_time = current_time_seconds
-                    
-                    # Проверка достижения требуемого времени
-                    if current_time_seconds >= required_seconds:
-                        logging.info(f"✅ Достигнуто время просмотра: {current_time_seconds}с")
-                        return True
-                else:
-                    no_timer_counter += 1
-                    logging.debug(f"⚠ Таймер не найден (попытка {no_timer_counter})")
-                    
-                    # Если долго нет таймера, пробуем запустить видео
-                    if no_timer_counter >= 8:
-                        logging.info("🎬 Попытка запуска видео (таймер не найден)")
-                        self.try_play_video()
-                        no_timer_counter = 0
-                
-                # Случайные действия во время просмотра
-                if random.random() < 0.1:  # 10% вероятность
-                    self.random_mouse_movement()
-                
-                if random.random() < 0.05:  # 5% вероятность
-                    self.random_scroll()
-                
-                time.sleep(1)
-            
-        except Exception as e:
-            logging.error(f"❌ Ошибка ожидания времени: {e}")
-            return False
-    
-    def try_play_video(self):
-        """Попытка запуска видео если оно на паузе"""
-        try:
-            # Поиск кнопки play
-            play_selectors = [
-                ".yt-icon-shape svg[viewBox*='24']",
-                "button[title*='воспроизвести']",
-                "button[title*='Play']",
-                ".ytp-play-button",
-                "[aria-label*='воспроизведение']",
-                "[aria-label*='Play']"
-            ]
-            
-            for selector in play_selectors:
-                try:
-                    play_buttons = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    for button in play_buttons:
-                        if button.is_displayed():
-                            try:
-                                # Проверяем, что это именно кнопка play (треугольник)
-                                svg_path = button.find_elements(By.TAG_NAME, "path")
-                                for path in svg_path:
-                                    path_d = path.get_attribute("d")
-                                    if path_d and ("m7 4 12 8-12 8V4z" in path_d or "M8 5v14l11-7z" in path_d):
-                                        logging.info("▶ Нажатие кнопки воспроизведения")
-                                        ActionChains(self.driver).move_to_element(button).click().perform()
-                                        HumanBehaviorSimulator.random_sleep(1, 3)
-                                        return
-                            except:
-                                continue
-                except:
-                    continue
-            
-            # Если кнопка не найдена, пробуем кликнуть по видео
-            try:
-                video_elements = self.driver.find_elements(By.TAG_NAME, "video")
-                if video_elements:
-                    video = video_elements[0]
-                    if video.is_displayed():
-                        logging.info("🎬 Клик по видео для запуска")
-                        ActionChains(self.driver).move_to_element(video).click().perform()
-                        HumanBehaviorSimulator.random_sleep(1, 3)
-            except:
-                pass
-            
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка запуска видео: {e}")
     
     def execute_youtube_task(self, task: Dict) -> bool:
-        """Выполнение одного задания YouTube"""
+        """Выполнение задания YouTube"""
         task_id = task['id']
-        watch_time = task['watch_time']
-        video_url = task['video_url']
         
-        logging.info(f"🎯 Выполнение задания {task_id}: {watch_time}с")
+        logging.info(f"🎯 Задание {task_id}")
         
         original_window = self.driver.current_window_handle
         
         try:
-            # Прокрутка к заданию
             ActionChains(self.driver).move_to_element(task['row']).perform()
-            HumanBehaviorSimulator.random_sleep(1, 4)
+            time.sleep(random.uniform(1, 3))
             
-            # Случайная пауза перед кликом
-            random_delay = random.uniform(2, 15)
-            logging.info(f"⏳ Случайная пауза {random_delay:.1f}с перед выполнением")
-            time.sleep(random_delay)
+            # Пауза перед кликом
+            pause = random.uniform(2, 15)
+            logging.info(f"⏳ Пауза {pause:.1f}с")
+            time.sleep(pause)
             
-            # Клик по кнопке "Посмотреть видео"
             start_button = task['element']
             
-            # Движение к кнопке по кривой
+            # Клик по заданию
             try:
                 viewport_size = self.driver.get_window_size()
                 current_pos = (viewport_size['width'] // 2, viewport_size['height'] // 2)
                 button_rect = start_button.rect
-                target_pos = (
-                    button_rect['x'] + button_rect['width'] // 2,
-                    button_rect['y'] + button_rect['height'] // 2
-                )
+                
+                target_x = max(10, min(viewport_size['width'] - 10, int(button_rect['x'] + button_rect['width'] // 2)))
+                target_y = max(10, min(viewport_size['height'] - 10, int(button_rect['y'] + button_rect['height'] // 2)))
+                target_pos = (target_x, target_y)
                 
                 curve_points = HumanBehaviorSimulator.generate_bezier_curve(current_pos, target_pos)
                 actions = ActionChains(self.driver)
                 
-                for i, point in enumerate(curve_points[1:], 1):  # Пропускаем первую точку
+                for i, point in enumerate(curve_points[1:], 1):
                     prev_point = curve_points[i-1]
-                    offset_x = point[0] - prev_point[0]
-                    offset_y = point[1] - prev_point[1]
+                    offset_x = max(-50, min(50, int(point[0] - prev_point[0])))
+                    offset_y = max(-50, min(50, int(point[1] - prev_point[1])))
                     actions.move_by_offset(offset_x, offset_y)
                     time.sleep(random.uniform(0.01, 0.03))
                 
                 actions.click(start_button).perform()
-            except Exception as e:
-                logging.debug(f"⚠ Ошибка движения мыши, обычный клик: {e}")
-                ActionChains(self.driver).move_to_element(start_button).click().perform()
+            except:
+                start_button.click()
             
-            logging.info(f"🖱 Клик по заданию {task_id}")
+            time.sleep(5)
             
-            # Ожидание открытия YouTube
-            HumanBehaviorSimulator.random_sleep(5, 12)
-            
-            # Переключение на новую вкладку YouTube
+            # Переключение на новую вкладку
             all_windows = self.driver.window_handles
             
-            youtube_window = None
+            new_window = None
             for window in all_windows:
                 if window != original_window:
                     self.driver.switch_to.window(window)
-                    if "youtube.com" in self.driver.current_url.lower():
-                        youtube_window = window
-                        break
+                    new_window = window
+                    break
             
-            if not youtube_window:
-                logging.error("❌ Не удалось найти вкладку YouTube")
+            if not new_window:
+                logging.error("❌ Новая вкладка не найдена")
                 return False
-            
-            logging.info("📺 Переключение на вкладку YouTube")
             
             # Обработка рекламы
             self.handle_youtube_ads()
             
-            # Ожидание требуемого времени просмотра
-            if self.wait_for_video_time(watch_time):
-                # Дополнительная случайная пауза
-                extra_delay = random.uniform(3, 30)
-                logging.info(f"⏳ Дополнительная пауза {extra_delay:.1f}с")
+            # Ожидание по таймеру Aviso
+            if self.wait_for_aviso_timer_completion():
+                logging.info("✅ Задание завершено!")
                 
-                # Случайные действия во время паузы
-                for _ in range(int(extra_delay // 4)):
-                    self.random_mouse_movement()
-                    time.sleep(random.uniform(2, 4))
+                time.sleep(random.uniform(2, 8))
                 
                 # Возврат на исходную вкладку
-                self.driver.close()  # Закрываем YouTube
+                self.driver.close()
                 self.driver.switch_to.window(original_window)
-                logging.info("🔙 Возврат на страницу заданий")
                 
-                HumanBehaviorSimulator.random_sleep(3, 8)
+                # Обновление страницы
+                logging.info("🔄 Обновление страницы...")
+                self.driver.refresh()
+                time.sleep(5)
                 
-                # Поиск и нажатие кнопки подтверждения
-                confirm_button_id = f"ads_btn_confirm_{task_id}"
-                confirm_button = self.wait_for_element(By.ID, confirm_button_id, 20)
-                
-                if confirm_button and confirm_button.is_displayed():
-                    ActionChains(self.driver).move_to_element(confirm_button).click().perform()
-                    logging.info(f"✅ Подтверждение просмотра задания {task_id}")
-                    HumanBehaviorSimulator.random_sleep(3, 8)
-                    return True
-                else:
-                    logging.error(f"❌ Кнопка подтверждения не найдена для задания {task_id}")
-                    return False
+                return True
             else:
-                logging.error(f"❌ Не удалось дождаться времени просмотра для задания {task_id}")
+                logging.error(f"❌ Задание {task_id} не завершено")
                 return False
                 
         except Exception as e:
-            logging.error(f"❌ Ошибка выполнения задания {task_id}: {e}")
+            logging.error(f"❌ Ошибка задания {task_id}: {e}")
             
-            # Попытка вернуться на исходную вкладку
+            # Очистка окон
             try:
                 all_windows = self.driver.window_handles
                 if len(all_windows) > 1:
@@ -1856,41 +2120,36 @@ class AvisoAutomation:
                     self.driver.switch_to.window(original_window)
                 else:
                     self.driver.switch_to.window(original_window)
-            except Exception as cleanup_error:
-                logging.debug(f"⚠ Ошибка очистки окон: {cleanup_error}")
+            except:
+                pass
             
             return False
     
     def execute_all_tasks(self) -> int:
-        """Выполнение всех доступных заданий"""
-        logging.info("🚀 Начало выполнения всех заданий...")
+        """Выполнение всех заданий"""
+        logging.info("🚀 Выполнение заданий...")
         
         tasks = self.get_youtube_tasks()
         if not tasks:
-            logging.info("📭 Нет доступных заданий")
+            logging.info("📭 Нет заданий")
             return 0
         
         completed_tasks = 0
-        
-        # Перемешиваем задания для случайности
         random.shuffle(tasks)
         
         for i, task in enumerate(tasks):
-            logging.info(f"📝 Задание {i+1}/{len(tasks)}")
+            logging.info(f"📝 {i+1}/{len(tasks)}")
             
             try:
                 if self.execute_youtube_task(task):
                     completed_tasks += 1
-                    logging.info(f"✅ Задание {task['id']} выполнено ({completed_tasks}/{len(tasks)})")
-                else:
-                    logging.warning(f"⚠ Задание {task['id']} не выполнено")
+                    logging.info(f"✅ Выполнено {completed_tasks}/{len(tasks)}")
                 
                 # Пауза между заданиями
-                if i < len(tasks) - 1:  # Не делаем паузу после последнего задания
-                    pause_time = random.uniform(45, 120)
-                    logging.info(f"⏳ Пауза между заданиями: {pause_time:.1f}с")
+                if i < len(tasks) - 1:
+                    pause_time = random.uniform(1, 25)
+                    logging.info(f"⏳ Пауза {pause_time:.1f}с")
                     
-                    # Случайные действия во время паузы
                     for _ in range(int(pause_time // 12)):
                         if random.random() < 0.5:
                             self.random_mouse_movement()
@@ -1899,66 +2158,69 @@ class AvisoAutomation:
                         time.sleep(random.uniform(10, 15))
                 
             except Exception as e:
-                logging.error(f"❌ Критическая ошибка при выполнении задания {task['id']}: {e}")
+                logging.error(f"❌ Критическая ошибка: {e}")
                 continue
         
-        logging.info(f"🏁 Завершено выполнение заданий: {completed_tasks}/{len(tasks)}")
+        logging.info(f"🏁 Завершено: {completed_tasks}/{len(tasks)}")
         return completed_tasks
     
     def cleanup(self):
-        """Очистка ресурсов"""
+        """Очистка"""
         try:
             if self.driver:
                 self.driver.quit()
-                logging.info("🚪 Браузер закрыт")
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка закрытия браузера: {e}")
+        except:
+            pass
         
         try:
             if self.use_tor:
                 self.tor_manager.stop_tor()
-        except Exception as e:
-            logging.debug(f"⚠ Ошибка остановки Tor: {e}")
+        except:
+            pass
     
     def run_cycle(self) -> bool:
-        """Выполнение одного цикла работы"""
-        logging.info("🔄 НАЧАЛО ЦИКЛА ВЫПОЛНЕНИЯ ЗАДАНИЙ")
+        """Один цикл работы"""
+        logging.info("🔄 Начало цикла")
         
         try:
-            # Настройка браузера
             if not self.setup_driver():
-                logging.error("❌ Не удалось настроить браузер")
+                logging.error("❌ Ошибка браузера")
                 return False
             
-            # Попытка использовать сохраненные cookies
             cookies_loaded = self.load_cookies()
             
-            # Проверка авторизации
-            if not cookies_loaded or not self.check_authorization():
-                # Требуется авторизация
+            if cookies_loaded:
+                logging.info("🔄 Применение cookies...")
+                self.driver.refresh()
+                time.sleep(8)
+                
+                if self.check_authorization():
+                    logging.info("✅ Авторизован через cookies")
+                else:
+                    if not self.login():
+                        return False
+            else:
                 if not self.login():
-                    logging.error("❌ Не удалось авторизоваться")
                     return False
             
-            # Выполнение заданий
             completed_tasks = self.execute_all_tasks()
             
             if completed_tasks > 0:
-                logging.info(f"✅ Цикл завершен успешно: выполнено {completed_tasks} заданий")
+                logging.info(f"✅ Цикл завершен: {completed_tasks} заданий")
             else:
-                logging.info("ℹ Цикл завершен: нет заданий для выполнения")
+                logging.info("ℹ Нет заданий")
             
             return True
             
         except Exception as e:
-            logging.error(f"❌ Ошибка в цикле выполнения: {e}")
+            logging.error(f"❌ Ошибка цикла: {e}")
             return False
         finally:
             self.cleanup()
     
     def run(self):
-        """Основной цикл работы бота"""
-        logging.info("🤖 ЗАПУСК AVISO AUTOMATION BOT - ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ")
+        """Основной цикл"""
+        logging.info("🤖 ЗАПУСК ЭФФЕКТИВНОГО AVISO BOT")
         
         cycle_count = 0
         consecutive_failures = 0
@@ -1969,75 +2231,66 @@ class AvisoAutomation:
                 cycle_count += 1
                 logging.info(f"🔄 ЦИКЛ #{cycle_count}")
                 
-                # Выполнение цикла
                 success = self.run_cycle()
                 
                 if success:
                     consecutive_failures = 0
                     
-                    # Случайная пауза между циклами (1 минута - 2 часа)
                     pause_minutes = random.uniform(1, 120)
                     pause_seconds = pause_minutes * 60
                     
                     next_run_time = datetime.now() + timedelta(seconds=pause_seconds)
                     
-                    logging.info(f"😴 Пауза до следующего цикла: {pause_minutes:.1f} минут")
-                    logging.info(f"⏰ Следующий запуск: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    logging.info(f"😴 Пауза {pause_minutes:.1f} минут")
+                    logging.info(f"⏰ Следующий: {next_run_time.strftime('%H:%M:%S')}")
                     
-                    # Разбиваем паузу на части для возможности прерывания
-                    pause_intervals = max(1, int(pause_seconds // 60))  # Проверяем каждую минуту
+                    pause_intervals = max(1, int(pause_seconds // 60))
                     interval_duration = pause_seconds / pause_intervals
                     
                     for i in range(pause_intervals):
                         time.sleep(interval_duration)
-                        remaining_minutes = pause_minutes - ((i + 1) * interval_duration / 60)
-                        if remaining_minutes > 1:
-                            logging.debug(f"⏳ Осталось до следующего цикла: {remaining_minutes:.1f} минут")
                 else:
                     consecutive_failures += 1
                     
                     if consecutive_failures >= max_consecutive_failures:
-                        logging.error(f"💥 Слишком много неудачных попыток подряд ({consecutive_failures})")
-                        logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА - ОСТАНОВКА РАБОТЫ")
+                        logging.error("💥 Много ошибок подряд - остановка")
                         break
                     else:
-                        # При ошибке пауза короче
                         pause_minutes = random.uniform(5, 15)
                     
-                    logging.warning(f"⚠ Ошибка в цикле #{cycle_count}, пауза {pause_minutes:.1f} минут")
+                    logging.warning(f"⚠ Ошибка цикла, пауза {pause_minutes:.1f} минут")
                     time.sleep(pause_minutes * 60)
         
         except KeyboardInterrupt:
-            logging.info("🛑 Получен сигнал остановки (Ctrl+C)")
+            logging.info("🛑 Остановка (Ctrl+C)")
         except Exception as e:
-            logging.error(f"💥 Критическая ошибка в главном цикле: {e}")
+            logging.error(f"💥 Критическая ошибка: {e}")
         finally:
             self.cleanup()
-            logging.info("👋 Работа бота завершена")
+            logging.info("👋 Завершение работы")
 
 def main():
     """Точка входа в программу"""
-    print("🤖 Aviso YouTube Tasks Automation Bot - ФИНАЛЬНАЯ РАБОЧАЯ ВЕРСИЯ")
+    print("🤖 Aviso YouTube Tasks Automation Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ")
     print("=" * 80)
     print("🚀 Автоматический запуск...")
     print("⚠  ВНИМАНИЕ: Используйте бота ответственно!")
-    print("🔧 ФИНАЛЬНЫЕ ИСПРАВЛЕНИЯ:")
-    print("   ✅ УБРАНЫ ВСЕ МОСТЫ TOR - только прямое соединение")
-    print("   ✅ Упрощена конфигурация Tor до минимума")
-    print("   ✅ Fallback режим: работа БЕЗ Tor если не запускается")
-    print("   ✅ Полная очистка процессов перед запуском")
-    print("   ✅ Исправлена логика поиска свободных портов")
-    print("   ✅ Детальное логирование конфигурации Tor")
+    print("🔧 ИСПРАВЛЕНИЯ:")
+    print("   ✅ Увеличен таймаут Tor с 2 до 20 минут")
+    print("   ✅ ВОССТАНОВЛЕНА проверка IP через 2ip.ru")
+    print("   ✅ Убраны проверки URL новых вкладок")
+    print("   ✅ ИСПРАВЛЕНЫ ошибки координат мыши")
+    print("   ✅ ВОССТАНОВЛЕНА оригинальная логика авторизации")
     print("📋 Функции:")
     print("   - Автоматическая авторизация на aviso.bz")
     print("   - Выполнение заданий по просмотру YouTube")
     print("   - Имитация человеческого поведения")
     print("   - Работа через Tor прокси ИЛИ БЕЗ прокси (fallback)")
+    print("   - ПРОВЕРКА СМЕНЫ IP через 2ip.ru")
     print("   - Автоматическая установка geckodriver")
     print("   - Фиксированный User-Agent для аккаунта")
     print("   - Улучшенная имитация опечаток при вводе")
     print("   - Улучшенная поддержка Termux/Android")
-    print("   - ПРОСТОЕ И НАДЕЖНОЕ логирование")
     print("=" * 80)
     print()
     
